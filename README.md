@@ -8,6 +8,11 @@ gives what drawing again would, and Bend's prover checks it. The work a
 frame does is then the size of the change, not the size of the view.
 [Two Piles of State](https://jbrownson.github.io/two-piles/) explains why.
 
+Development continues in Lean, as
+[lean-deui](https://github.com/jbrownson/lean-deui): the same laws read and
+prove more directly there, and Lean's C interface is documented and stable.
+This repository stays as it is, a record of deui in Bend.
+
 ## Files
 
 A module with laws has a directory of its own: the module, `LAWS.bend`,

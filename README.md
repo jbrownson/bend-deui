@@ -209,6 +209,7 @@ its text included, is drawn at it.
 
 Tested with Bend 2.0.40, SDL 3.4.20 and ThorVG 1.1.4. The windows have
 been run under Xvfb (X11), driven by xdotool: clicks, Return, typing and
-Backspace; and drawn under headless Weston (Wayland) at scale 2. The window examples look for Liberation Sans at
+Backspace; and drawn under headless Weston (Wayland) at scale 2. The
+window examples look for Liberation Sans at
 `/usr/share/fonts/liberation/LiberationSans-Regular.ttf` (`ttf-liberation`
 on Arch); without it, labels are left out, and the window says why.

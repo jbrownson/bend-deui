@@ -34,8 +34,10 @@ every module's proofs.
   with its derivative, which gives the edit to the function's result from an
   edit to its input. `lift` turns an `Inc` whose derivative gives a run for
   one edit into one that handles runs, and `whole.lift` lifts one to values
-  that can also be replaced. The laws say what each operation returns, and
-  that lifting a correct `Inc` gives a correct one.
+  that can also be replaced. `compose` is one `Inc` after another, its
+  derivative the first's then the second's. The laws say what each
+  operation returns, and that lifting or composing correct `Inc`s gives a
+  correct one.
 - `list/`: a list's edits (insert, delete, and update an element in place),
   given how its elements are edited (`edit_structure`), `patch` to apply a
   run of them, `diff`, a run from any list to any other, and `map.inc`,
@@ -68,8 +70,9 @@ every module's proofs.
   the column of the edited rows, for every edit and every run of them.
 - `app/`: an app. A state, edited as its edit structure says, a view that
   is an incremental function from runs of the state's edits to runs of the
-  scene's, and two handlers, fixed code passed as templates: from the
-  state and what a press hit, or which key went down, to a run of edits.
+  scene's, and three handlers, fixed code passed as templates: from the
+  state and what a press hit, which key went down or what was typed, to a
+  run of edits.
   An event's edits go to the state, and through the view's derivative to
   the scene on screen; the view runs once, at launch. The laws say that
   if the derivative is correct, the scene on screen is the view of the

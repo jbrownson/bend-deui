@@ -26,11 +26,12 @@ law step_shows:
   for ~view: C.Inc<C.runs(~cs), C.runs(~S.edit_structure())>
   for ~press: C.Value(cs) -> S.Hit -> List<&2, C.Edit(cs)>
   for ~key: C.Value(cs) -> U32 -> List<&2, C.Edit(cs)>
+  for ~text: C.Value(cs) -> String -> List<&2, C.Edit(cs)>
   for view_ok: C.Inc.ok(C.runs(~cs), C.runs(~S.edit_structure()), view)
   for m: A.Model<cs>
   for e: Event
   for h: shows(~cs, ~view, m)
-  shows(~cs, ~view, A.step(~cs, ~view, ~press, ~key, m, e))
+  shows(~cs, ~view, A.step(~cs, ~view, ~press, ~key, ~text, m, e))
 
 # It follows that:
 
@@ -40,8 +41,9 @@ law play_shows:
   for ~view: C.Inc<C.runs(~cs), C.runs(~S.edit_structure())>
   for ~press: C.Value(cs) -> S.Hit -> List<&2, C.Edit(cs)>
   for ~key: C.Value(cs) -> U32 -> List<&2, C.Edit(cs)>
+  for ~text: C.Value(cs) -> String -> List<&2, C.Edit(cs)>
   for ~view_ok: C.Inc.ok(C.runs(~cs), C.runs(~S.edit_structure()), view)
   for events: List<&2, Event>
   for +m: A.Model<cs>
   for h: shows(~cs, ~view, m)
-  shows(~cs, ~view, A.play(~cs, ~view, ~press, ~key, events, m))
+  shows(~cs, ~view, A.play(~cs, ~view, ~press, ~key, ~text, events, m))

@@ -207,6 +207,32 @@ law recompute_ok:
   for ~f: C.Value(ca) -> C.Value(cb)
   C.Inc.ok(ca, C.whole(~cb), C.recompute(~ca, ~cb, ~f))
 
+# Composing
+# ---------
+
+# LAW: g after f applies f then g, and its derivative gives f's edit for
+# the input's, then g's for that, from f's result.
+law compose:
+  for ~ca: C.EditStructure
+  for ~cb: C.EditStructure
+  for ~cc: C.EditStructure
+  for ~f: C.Inc<ca, cb>
+  for ~g: C.Inc<cb, cc>
+  {C.compose(~ca, ~cb, ~cc, ~f, ~g) == C.Inc{a => C.Inc.f(cb, cc, g)(C.Inc.f(ca, cb, f)(a)), a => d => C.compose.df(~ca, ~cb, ~cc, ~f, ~g, a, d)} : C.Inc<ca, cc>}
+
+# It follows that:
+
+# LAW: g after f is correct, if f and g are.
+law compose_ok:
+  for ~ca: C.EditStructure
+  for ~cb: C.EditStructure
+  for ~cc: C.EditStructure
+  for ~f: C.Inc<ca, cb>
+  for ~g: C.Inc<cb, cc>
+  for ~f_ok: C.Inc.ok(ca, cb, f)
+  for ~g_ok: C.Inc.ok(cb, cc, g)
+  C.Inc.ok(ca, cc, C.compose(~ca, ~cb, ~cc, ~f, ~g))
+
 # Mapping edits
 # -------------
 

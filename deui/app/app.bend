@@ -4,9 +4,10 @@ import ../change/change.bend as C
 import ../scene/scene.bend as S
 
 # An app: a state, edited as cs says, its view, an incremental function
-# from runs of the state's edits to runs of the scene's, and two handlers,
-# fixed code passed as templates. An event becomes a run of edits to the
-# state, from what a press hit or which key went down, and the view's
+# from runs of the state's edits to runs of the scene's, and three
+# handlers, fixed code passed as templates. An event becomes a run of edits
+# to the state, from what a press hit, which key went down or what was
+# typed, and the view's
 # derivative turns that run into edits to the scene kept on screen. The
 # view itself runs once, at launch.
 
@@ -28,16 +29,18 @@ def pressed(~cs: C.EditStructure, ~press: C.Value(cs) -> S.Hit -> List<&2, C.Edi
       Nil{}
 
 # The edits an event makes to the state: a button pressed down, through
-# what it hit in the scene on screen, or a key pressed down. Other events
-# make none.
+# what it hit in the scene on screen, a key pressed down, or text typed.
+# Other events make none.
 def respond(~cs: C.EditStructure, ~press: C.Value(cs) -> S.Hit -> List<&2, C.Edit(cs)>,
-  ~key: C.Value(cs) -> U32 -> List<&2, C.Edit(cs)>, +state: C.Value(cs), scene: S.Scene,
+  ~key: C.Value(cs) -> U32 -> List<&2, C.Edit(cs)>, ~text: C.Value(cs) -> String -> List<&2, C.Edit(cs)>, +state: C.Value(cs), scene: S.Scene,
   event: Event) -> List<&2, C.Edit(cs)>:
   match event:
     case Press{id, tool, x, y, time, button, True{}}:
       pressed(~cs, ~press, state, S.hit(scene, 0n, coordinate(x), coordinate(y)))
     case Key{code, True{}}:
       key(state, code)
+    case Text{t}:
+      text(state, t)
     case e:
       Nil{}
 
@@ -49,11 +52,11 @@ def edit(~cs: C.EditStructure, ~view: C.Inc<C.runs(~cs), C.runs(~S.edit_structur
 
 # The model after an event.
 def step(~cs: C.EditStructure, ~view: C.Inc<C.runs(~cs), C.runs(~S.edit_structure())>,
-  ~press: C.Value(cs) -> S.Hit -> List<&2, C.Edit(cs)>, ~key: C.Value(cs) -> U32 -> List<&2, C.Edit(cs)>,
+  ~press: C.Value(cs) -> S.Hit -> List<&2, C.Edit(cs)>, ~key: C.Value(cs) -> U32 -> List<&2, C.Edit(cs)>, ~text: C.Value(cs) -> String -> List<&2, C.Edit(cs)>,
   m: Model<cs>, event: Event) -> Model<cs>:
   match m:
     case Model{+state, +scene}:
-      edit(~cs, ~view, state, scene, respond(~cs, ~press, ~key, state, scene, event))
+      edit(~cs, ~view, state, scene, respond(~cs, ~press, ~key, ~text, state, scene, event))
 
 # The model at launch: the state, and its view.
 def start(~cs: C.EditStructure, ~view: C.Inc<C.runs(~cs), C.runs(~S.edit_structure())>,
@@ -62,10 +65,10 @@ def start(~cs: C.EditStructure, ~view: C.Inc<C.runs(~cs), C.runs(~S.edit_structu
 
 # The model after events, in order.
 def play(~cs: C.EditStructure, ~view: C.Inc<C.runs(~cs), C.runs(~S.edit_structure())>,
-  ~press: C.Value(cs) -> S.Hit -> List<&2, C.Edit(cs)>, ~key: C.Value(cs) -> U32 -> List<&2, C.Edit(cs)>,
+  ~press: C.Value(cs) -> S.Hit -> List<&2, C.Edit(cs)>, ~key: C.Value(cs) -> U32 -> List<&2, C.Edit(cs)>, ~text: C.Value(cs) -> String -> List<&2, C.Edit(cs)>,
   events: List<&2, Event>, m: Model<cs>) -> Model<cs>:
   match events:
     case Nil{}:
       m
     case Con{e, rest}:
-      play(~cs, ~view, ~press, ~key, rest, step(~cs, ~view, ~press, ~key, m, e))
+      play(~cs, ~view, ~press, ~key, ~text, rest, step(~cs, ~view, ~press, ~key, ~text, m, e))

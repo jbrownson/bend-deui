@@ -156,3 +156,37 @@ def Laws.map_edits_nil(EA, EB, fe):
 
 def Laws.map_edits_con(EA, EB, fe, e, es):
   {==}
+
+# Composing
+# ---------
+
+def Laws.compose(ca, cb, cc, f, g):
+  {==}
+
+# Lemma: g after f is correct at a and d: g's law at f's result, then f's
+# law under g.
+law compose_at:
+  for ~ca: C.EditStructure
+  for ~cb: C.EditStructure
+  for ~cc: C.EditStructure
+  for ~f: C.Inc<ca, cb>
+  for ~g: C.Inc<cb, cc>
+  for ~f_ok: C.Inc.ok(ca, cb, f)
+  for ~g_ok: C.Inc.ok(cb, cc, g)
+  for +a: C.Value(ca)
+  for +d: C.Edit(ca)
+  {C.EditStructure.apply(cc)(C.compose.df(~ca, ~cb, ~cc, ~f, ~g, a, d), C.Inc.f(cb, cc, g)(C.Inc.f(ca, cb, f)(a))) == C.Inc.f(cb, cc, g)(C.Inc.f(ca, cb, f)(C.EditStructure.apply(ca)(d, a))) : C.Value(cc)}
+
+def compose_at(ca, cb, cc, f, g, f_ok, g_ok, a, d):
+  Equal.trans(C.Value(cc),
+    C.EditStructure.apply(cc)(C.Inc.df(cb, cc, g)(C.Inc.f(ca, cb, f)(a), C.Inc.df(ca, cb, f)(a, d)), C.Inc.f(cb, cc, g)(C.Inc.f(ca, cb, f)(a))),
+    C.Inc.f(cb, cc, g)(C.EditStructure.apply(cb)(C.Inc.df(ca, cb, f)(a, d), C.Inc.f(ca, cb, f)(a))),
+    C.Inc.f(cb, cc, g)(C.Inc.f(ca, cb, f)(C.EditStructure.apply(ca)(d, a))),
+    g_ok(C.Inc.f(ca, cb, f)(a), C.Inc.df(ca, cb, f)(a, d)),
+    Equal.cong(C.Value(cb), C.Value(cc), C.Inc.f(cb, cc, g),
+      C.EditStructure.apply(cb)(C.Inc.df(ca, cb, f)(a, d), C.Inc.f(ca, cb, f)(a)),
+      C.Inc.f(ca, cb, f)(C.EditStructure.apply(ca)(d, a)),
+      f_ok(a, d)))
+
+def Laws.compose_ok(ca, cb, cc, f, g, f_ok, g_ok):
+  a => d => compose_at(~ca, ~cb, ~cc, ~f, ~g, ~f_ok, ~g_ok, a, d)

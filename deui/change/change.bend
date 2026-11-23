@@ -141,6 +141,16 @@ def whole.lift(~ca: EditStructure, ~cb: EditStructure, ~g: Inc<ca, cb>) -> Inc<w
 def recompute(~ca: EditStructure, ~cb: EditStructure, ~f: Value(ca) -> Value(cb)) -> Inc<ca, whole(~cb)>:
   Inc{f, a => e => Replace{f(EditStructure.apply(ca)(e, a))}}
 
+# compose's derivative: f's edit for the input's, then g's for that, from
+# f's result.
+def compose.df(~ca: EditStructure, ~cb: EditStructure, ~cc: EditStructure, ~f: Inc<ca, cb>, ~g: Inc<cb, cc>,
+  +a: Value(ca), d: Edit(ca)) -> Edit(cc):
+  Inc.df(cb, cc, g)(Inc.f(ca, cb, f)(a), Inc.df(ca, cb, f)(a, d))
+
+# g after f, as an incremental function.
+def compose(~ca: EditStructure, ~cb: EditStructure, ~cc: EditStructure, ~f: Inc<ca, cb>, ~g: Inc<cb, cc>) -> Inc<ca, cc>:
+  Inc{a => Inc.f(cb, cc, g)(Inc.f(ca, cb, f)(a)), a => d => compose.df(~ca, ~cb, ~cc, ~f, ~g, a, d)}
+
 # Edits mapped by fe, in order.
 def map.edits(~EA: Data, ~EB: Data, ~fe: EA -> EB, es: List<&2, EA>) -> List<&2, EB>:
   match es:

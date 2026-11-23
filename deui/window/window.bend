@@ -88,14 +88,14 @@ def next(-cs: C.EditStructure, close: Bool, r: Gpu.Renderer, font: Maybe<&2, F.F
       Loop.Redraw{(m, r, font)}
 
 def update(~cs: C.EditStructure, ~view: C.Inc<C.runs(~cs), C.runs(~S.edit_structure())>,
-  ~press: C.Value(cs) -> S.Hit -> List<&2, C.Edit(cs)>, ~key: C.Value(cs) -> U32 -> List<&2, C.Edit(cs)>,
+  ~press: C.Value(cs) -> S.Hit -> List<&2, C.Edit(cs)>, ~key: C.Value(cs) -> U32 -> List<&2, C.Edit(cs)>, ~text: C.Value(cs) -> String -> List<&2, C.Edit(cs)>,
   win: A.Win, batch: List<&2, A.Input>, st: D.Model<cs> & Gpu.Renderer & Maybe<&2, F.Font>) -> IO(Loop.Step<(D.Model<cs> & Gpu.Renderer & Maybe<&2, F.Font>)>):
   (m, r, font) = st
   +ins = batch
   +es = events(ins)
   do IO<Loop.Step<(D.Model<cs> & Gpu.Renderer & Maybe<&2, F.Font>)>>:
     +r1 : Gpu.Renderer <- resized(A.resized(ins, None{}), r)
-    return next(cs, closing(es), r1, font, D.play(~cs, ~view, ~press, ~key, es, m))
+    return next(cs, closing(es), r1, font, D.play(~cs, ~view, ~press, ~key, ~text, es, m))
 
 # Another frame is owed when the swapchain was rebuilt while presenting.
 def drawn(-cs: C.EditStructure, pending: Bool, r: Gpu.Renderer, font: Maybe<&2, F.Font>, m: D.Model<cs>) -> Loop.Step<(D.Model<cs> & Gpu.Renderer & Maybe<&2, F.Font>)>:
@@ -147,7 +147,7 @@ def loaded(r: Result<&2, &2, String, F.Font>) -> Maybe<&2, F.Font>:
 # (0xRRGGBB), its labels in the TrueType font at font_path, from `state`,
 # until the window closes.
 def run(~cs: C.EditStructure, ~view: C.Inc<C.runs(~cs), C.runs(~S.edit_structure())>,
-  ~press: C.Value(cs) -> S.Hit -> List<&2, C.Edit(cs)>, ~key: C.Value(cs) -> U32 -> List<&2, C.Edit(cs)>,
+  ~press: C.Value(cs) -> S.Hit -> List<&2, C.Edit(cs)>, ~key: C.Value(cs) -> U32 -> List<&2, C.Edit(cs)>, ~text: C.Value(cs) -> String -> List<&2, C.Edit(cs)>,
   ~bg: U32, title: String, font_path: String, +width: U32, +height: U32, +state: C.Value(cs)) -> IO(Unit):
   do IO<Unit>:
     font : Result<&2, &2, String, F.Font> <- F.load(font_path)
@@ -155,6 +155,6 @@ def run(~cs: C.EditStructure, ~view: C.Inc<C.runs(~cs), C.runs(~S.edit_structure
     +native : List<&2, U32> <- A.native(win)
     +r : Gpu.Renderer <- Gpu.open(native, width, height, True{})
     end : A.Win & D.Model<cs> & Gpu.Renderer & Maybe<&2, F.Font> <- Loop.run(~(D.Model<cs> & Gpu.Renderer & Maybe<&2, F.Font>),
-      ~(w => b => st => update(~cs, ~view, ~press, ~key, w, b, st)),
+      ~(w => b => st => update(~cs, ~view, ~press, ~key, ~text, w, b, st)),
       ~(w => st => draw(~cs, ~bg, w, st)), win, (D.start(~cs, ~view, state), r, loaded(font)))
     finish(cs, end)

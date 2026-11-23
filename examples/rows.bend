@@ -41,6 +41,10 @@ def key.a(is_a: Bool) -> List<&2, L.Edit.of(K.row_edits())>:
 def key(rows: List<&2, K.Row>, code: U32) -> List<&2, L.Edit.of(K.row_edits())>:
   key.a(U32.is_eq(code, 97))
 
+# Typing does nothing here.
+def text(rows: List<&2, K.Row>, t: String) -> List<&2, L.Edit.of(K.row_edits())>:
+  Nil{}
+
 def click(x: F32, y: F32) -> Event:
   Press{0, Tool.Mouse{}, x, y, 0, 0, True{}}
 
@@ -50,7 +54,7 @@ def events() -> List<&2, Event>:
   [click(10.0, 15.0), Key{97, True{}}, click(10.0, 7.0)]
 
 def model() -> A.Model<K.rows_edits()>:
-  A.play(~K.rows_edits(), ~K.inc(), ~press, ~key, events(), A.start(~K.rows_edits(), ~K.inc(), rows()))
+  A.play(~K.rows_edits(), ~K.inc(), ~press, ~key, ~text, events(), A.start(~K.rows_edits(), ~K.inc(), rows()))
 
 # Two scenes are the same, field by field.
 def same(a: S.Scene, b: S.Scene) -> Bool:

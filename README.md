@@ -111,7 +111,6 @@ native code:
 - `rows.bend`: an app. A column of rows: clicking a row deletes it, and
   "a" adds one at the top. It plays clicks and a key, then prints the
   heights left and whether the scene on screen is the view of the rows.
-  It reads its events' float coordinates, so it runs natively.
 - `rows_pixels.bend`: the rows app's scene after its events, drawn on the
   CPU as the window draws it on the GPU, checked against drawing the rows
   again.
@@ -178,10 +177,10 @@ bend deui/list/PROOF.bend     # or one module's laws
 bend examples/lists.bend      # computes a mapped list's edits
 bend examples/scene.bend      # edits a column of rows
 bend examples/column.bend     # patches a column, and draws it again
-bend examples/rows.bend -o rows && ./rows   # plays events through an app
+bend examples/rows.bend                       # plays events through an app
 bend examples/rows_pixels.bend -o px && ./px # draws the app on the CPU
 bend examples/rows_window.bend -o win && ./win  # the app in a window
-bend examples/todo.bend -o todo && ./todo   # plays events through the to-do list
+bend examples/todo.bend                       # plays events through the to-do list
 bend examples/todo_window.bend -o todo && ./todo  # the to-do list in a window
 bend examples/todo_bench.bend -o bench && time ./bench  # times the to-do list
 ```

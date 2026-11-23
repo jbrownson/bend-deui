@@ -99,10 +99,11 @@ native code:
   scene itself is kept, and changes only by its edits; `frame` runs on
   every frame.
 - `screen.c`: those effects, natively. [SDL3](https://libsdl.org) gives
-  the window, its events and an OpenGL context, and
-  [ThorVG](https://www.thorvg.org)'s OpenGL engine draws each frame on the
-  GPU, its labels included. Both are opened with `dlopen`, as Bend links no
-  library of its own choosing.
+  the window and its events,
+  [wgpu-native](https://github.com/gfx-rs/wgpu-native) gives WebGPU, on
+  Vulkan, and [ThorVG](https://www.thorvg.org)'s WebGPU engine draws each
+  frame on the GPU, its labels included. All three are opened with
+  `dlopen`, as Bend links no library of its own choosing.
 - `window.bend`: runs an app in a window: draws the scene on screen, waits
   for events, and plays them through the app, until the window closes.
   The view runs once, at launch.
@@ -172,15 +173,17 @@ hash, so `bend` fetches exactly that code on first use and checks it:
 For the windows, installed on the system, their headers to build and
 their libraries to run:
 
-- [SDL3](https://libsdl.org) (`libSDL3.so.0`; `pacman -S sdl3` on Arch).
-- [ThorVG](https://github.com/thorvg/thorvg) 1.x, with its OpenGL engine,
-  its TrueType loader and its C API (`libthorvg-1.so.1`, and
-  `thorvg-1/thorvg_capi.h`). From a checkout of its source:
+- [SDL3](https://libsdl.org) (`libSDL3.so.0`; `pacman -S sdl3` on Arch),
+  and a Vulkan driver.
+- [wgpu-native](https://github.com/gfx-rs/wgpu-native) v29.0.1.1
+  (`libwgpu_native.so`), the version ThorVG is built against: its C API
+  still changes between releases.
+- [ThorVG](https://github.com/thorvg/thorvg) 1.1.4, with its WebGPU
+  engine, its TrueType loader and its C API (`libthorvg-1.so.1`).
 
-  ```sh
-  meson setup build --buildtype=release -Dengines=cpu,gl -Dloaders=ttf -Dbindings=capi
-  ninja -C build && sudo ninja -C build install
-  ```
+`tools/setup-native.sh` installs the last two under `/usr/local`: it
+fetches wgpu-native's release build and builds ThorVG against it. Its
+comment lists what it needs.
 
 ## Running
 
@@ -207,7 +210,8 @@ Wayland or X11. Sizes and positions are in the window's coordinates; on a
 high-density display the window has its full resolution, and the frame,
 its text included, is drawn at it.
 
-Tested with Bend 2.0.40, SDL 3.4.20 and ThorVG 1.1.4. The windows have
+Tested with Bend 2.0.40, SDL 3.4.20, wgpu-native 29.0.1.1 and ThorVG
+1.1.4, on Mesa's software Vulkan driver (lavapipe). The windows have
 been run under Xvfb (X11), driven by xdotool: clicks, Return, typing and
 Backspace; and drawn under headless Weston (Wayland) at scale 2. The
 window examples look for Liberation Sans at

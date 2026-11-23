@@ -1,13 +1,14 @@
-// deui's screen, native (SDL3 and ThorVG)
-// =======================================
+// deui's screen, native (SDL3, WebGPU and ThorVG)
+// =================================================
 //
-// The effects in screen.bend. SDL3 gives the window, its events and an
-// OpenGL context; ThorVG's OpenGL engine draws each frame into it, its
-// labels in a TrueType font. Bend splices this file into the generated C
-// program after its runtime, so the runtime's helpers (Term, Env, io_done,
-// io_fail, io_node, ...) are in scope. Bend links no library for it, so
-// SDL3 and ThorVG are opened with dlopen on first use; their headers only
-// supply the types.
+// The effects in screen.bend. SDL3 gives the window and its events,
+// wgpu-native gives WebGPU on Vulkan (or Metal, or DirectX), and ThorVG's
+// WebGPU engine draws each frame onto the window's surface, its labels in
+// a TrueType font. Bend splices this file into the generated C program
+// after its runtime, so the runtime's helpers (Term, Env, io_done, io_fail,
+// io_node, ...) are in scope. Bend links no library for it, so the three
+// are opened with dlopen on first use; their headers only supply the
+// types.
 //
 // One window at a time, named by the id 1. Events cross into Bend as a flat
 // list of words, and a frame comes back as one; screen.bend says how each
@@ -20,6 +21,7 @@
 
 #include <dlfcn.h>
 #include <SDL3/SDL.h>
+#include <webgpu/webgpu.h>
 #include <thorvg-1/thorvg_capi.h>
 
 // The libraries, opened
@@ -30,12 +32,10 @@ static __typeof__(SDL_Quit)* ds_SDL_Quit;
 static __typeof__(SDL_GetError)* ds_SDL_GetError;
 static __typeof__(SDL_CreateWindow)* ds_SDL_CreateWindow;
 static __typeof__(SDL_DestroyWindow)* ds_SDL_DestroyWindow;
-static __typeof__(SDL_GL_SetAttribute)* ds_SDL_GL_SetAttribute;
-static __typeof__(SDL_GL_CreateContext)* ds_SDL_GL_CreateContext;
-static __typeof__(SDL_GL_DestroyContext)* ds_SDL_GL_DestroyContext;
-static __typeof__(SDL_GL_MakeCurrent)* ds_SDL_GL_MakeCurrent;
-static __typeof__(SDL_GL_SetSwapInterval)* ds_SDL_GL_SetSwapInterval;
-static __typeof__(SDL_GL_SwapWindow)* ds_SDL_GL_SwapWindow;
+static __typeof__(SDL_GetWindowProperties)* ds_SDL_GetWindowProperties;
+static __typeof__(SDL_GetPointerProperty)* ds_SDL_GetPointerProperty;
+static __typeof__(SDL_GetNumberProperty)* ds_SDL_GetNumberProperty;
+static __typeof__(SDL_GetCurrentVideoDriver)* ds_SDL_GetCurrentVideoDriver;
 static __typeof__(SDL_GetWindowSizeInPixels)* ds_SDL_GetWindowSizeInPixels;
 static __typeof__(SDL_GetWindowPixelDensity)* ds_SDL_GetWindowPixelDensity;
 static __typeof__(SDL_StartTextInput)* ds_SDL_StartTextInput;
@@ -43,10 +43,20 @@ static __typeof__(SDL_WaitEventTimeout)* ds_SDL_WaitEventTimeout;
 static __typeof__(SDL_PollEvent)* ds_SDL_PollEvent;
 static __typeof__(SDL_LoadFile)* ds_SDL_LoadFile;
 static __typeof__(SDL_free)* ds_SDL_free;
+static __typeof__(wgpuCreateInstance)* ds_wgpuCreateInstance;
+static __typeof__(wgpuInstanceCreateSurface)* ds_wgpuInstanceCreateSurface;
+static __typeof__(wgpuInstanceRequestAdapter)* ds_wgpuInstanceRequestAdapter;
+static __typeof__(wgpuAdapterRequestDevice)* ds_wgpuAdapterRequestDevice;
+static __typeof__(wgpuInstanceProcessEvents)* ds_wgpuInstanceProcessEvents;
+static __typeof__(wgpuSurfacePresent)* ds_wgpuSurfacePresent;
+static __typeof__(wgpuSurfaceRelease)* ds_wgpuSurfaceRelease;
+static __typeof__(wgpuDeviceRelease)* ds_wgpuDeviceRelease;
+static __typeof__(wgpuAdapterRelease)* ds_wgpuAdapterRelease;
+static __typeof__(wgpuInstanceRelease)* ds_wgpuInstanceRelease;
 static __typeof__(tvg_engine_init)* ds_tvg_engine_init;
 static __typeof__(tvg_engine_term)* ds_tvg_engine_term;
-static __typeof__(tvg_glcanvas_create)* ds_tvg_glcanvas_create;
-static __typeof__(tvg_glcanvas_set_target)* ds_tvg_glcanvas_set_target;
+static __typeof__(tvg_wgcanvas_create)* ds_tvg_wgcanvas_create;
+static __typeof__(tvg_wgcanvas_set_target_with_context)* ds_tvg_wgcanvas_set_target_with_context;
 static __typeof__(tvg_canvas_destroy)* ds_tvg_canvas_destroy;
 static __typeof__(tvg_canvas_add)* ds_tvg_canvas_add;
 static __typeof__(tvg_canvas_remove)* ds_tvg_canvas_remove;
@@ -64,7 +74,7 @@ static __typeof__(tvg_paint_translate)* ds_tvg_paint_translate;
 static __typeof__(tvg_font_load_data)* ds_tvg_font_load_data;
 static __typeof__(tvg_font_unload)* ds_tvg_font_unload;
 
-// Opens both libraries and finds every function, once; false if any is
+// Opens the libraries and finds every function, once; false if any is
 // missing.
 static bool ds_load(void) {
   static int state = 0;
@@ -72,19 +82,18 @@ static bool ds_load(void) {
     return state == 1;
   }
   void* libsdl = dlopen("libSDL3.so.0", RTLD_NOW | RTLD_GLOBAL);
-  void* libtvg = libsdl ? dlopen("libthorvg-1.so.1", RTLD_NOW | RTLD_GLOBAL) : NULL;
-  bool ok = libsdl != NULL && libtvg != NULL;
+  void* libwgpu = dlopen("libwgpu_native.so", RTLD_NOW | RTLD_GLOBAL);
+  void* libtvg = dlopen("libthorvg-1.so.1", RTLD_NOW | RTLD_GLOBAL);
+  bool ok = libsdl != NULL && libwgpu != NULL && libtvg != NULL;
   ok = ok && (ds_SDL_Init = (__typeof__(SDL_Init)*)dlsym(libsdl, "SDL_Init"));
   ok = ok && (ds_SDL_Quit = (__typeof__(SDL_Quit)*)dlsym(libsdl, "SDL_Quit"));
   ok = ok && (ds_SDL_GetError = (__typeof__(SDL_GetError)*)dlsym(libsdl, "SDL_GetError"));
   ok = ok && (ds_SDL_CreateWindow = (__typeof__(SDL_CreateWindow)*)dlsym(libsdl, "SDL_CreateWindow"));
   ok = ok && (ds_SDL_DestroyWindow = (__typeof__(SDL_DestroyWindow)*)dlsym(libsdl, "SDL_DestroyWindow"));
-  ok = ok && (ds_SDL_GL_SetAttribute = (__typeof__(SDL_GL_SetAttribute)*)dlsym(libsdl, "SDL_GL_SetAttribute"));
-  ok = ok && (ds_SDL_GL_CreateContext = (__typeof__(SDL_GL_CreateContext)*)dlsym(libsdl, "SDL_GL_CreateContext"));
-  ok = ok && (ds_SDL_GL_DestroyContext = (__typeof__(SDL_GL_DestroyContext)*)dlsym(libsdl, "SDL_GL_DestroyContext"));
-  ok = ok && (ds_SDL_GL_MakeCurrent = (__typeof__(SDL_GL_MakeCurrent)*)dlsym(libsdl, "SDL_GL_MakeCurrent"));
-  ok = ok && (ds_SDL_GL_SetSwapInterval = (__typeof__(SDL_GL_SetSwapInterval)*)dlsym(libsdl, "SDL_GL_SetSwapInterval"));
-  ok = ok && (ds_SDL_GL_SwapWindow = (__typeof__(SDL_GL_SwapWindow)*)dlsym(libsdl, "SDL_GL_SwapWindow"));
+  ok = ok && (ds_SDL_GetWindowProperties = (__typeof__(SDL_GetWindowProperties)*)dlsym(libsdl, "SDL_GetWindowProperties"));
+  ok = ok && (ds_SDL_GetPointerProperty = (__typeof__(SDL_GetPointerProperty)*)dlsym(libsdl, "SDL_GetPointerProperty"));
+  ok = ok && (ds_SDL_GetNumberProperty = (__typeof__(SDL_GetNumberProperty)*)dlsym(libsdl, "SDL_GetNumberProperty"));
+  ok = ok && (ds_SDL_GetCurrentVideoDriver = (__typeof__(SDL_GetCurrentVideoDriver)*)dlsym(libsdl, "SDL_GetCurrentVideoDriver"));
   ok = ok && (ds_SDL_GetWindowSizeInPixels = (__typeof__(SDL_GetWindowSizeInPixels)*)dlsym(libsdl, "SDL_GetWindowSizeInPixels"));
   ok = ok && (ds_SDL_GetWindowPixelDensity = (__typeof__(SDL_GetWindowPixelDensity)*)dlsym(libsdl, "SDL_GetWindowPixelDensity"));
   ok = ok && (ds_SDL_StartTextInput = (__typeof__(SDL_StartTextInput)*)dlsym(libsdl, "SDL_StartTextInput"));
@@ -92,10 +101,20 @@ static bool ds_load(void) {
   ok = ok && (ds_SDL_PollEvent = (__typeof__(SDL_PollEvent)*)dlsym(libsdl, "SDL_PollEvent"));
   ok = ok && (ds_SDL_LoadFile = (__typeof__(SDL_LoadFile)*)dlsym(libsdl, "SDL_LoadFile"));
   ok = ok && (ds_SDL_free = (__typeof__(SDL_free)*)dlsym(libsdl, "SDL_free"));
+  ok = ok && (ds_wgpuCreateInstance = (__typeof__(wgpuCreateInstance)*)dlsym(libwgpu, "wgpuCreateInstance"));
+  ok = ok && (ds_wgpuInstanceCreateSurface = (__typeof__(wgpuInstanceCreateSurface)*)dlsym(libwgpu, "wgpuInstanceCreateSurface"));
+  ok = ok && (ds_wgpuInstanceRequestAdapter = (__typeof__(wgpuInstanceRequestAdapter)*)dlsym(libwgpu, "wgpuInstanceRequestAdapter"));
+  ok = ok && (ds_wgpuAdapterRequestDevice = (__typeof__(wgpuAdapterRequestDevice)*)dlsym(libwgpu, "wgpuAdapterRequestDevice"));
+  ok = ok && (ds_wgpuInstanceProcessEvents = (__typeof__(wgpuInstanceProcessEvents)*)dlsym(libwgpu, "wgpuInstanceProcessEvents"));
+  ok = ok && (ds_wgpuSurfacePresent = (__typeof__(wgpuSurfacePresent)*)dlsym(libwgpu, "wgpuSurfacePresent"));
+  ok = ok && (ds_wgpuSurfaceRelease = (__typeof__(wgpuSurfaceRelease)*)dlsym(libwgpu, "wgpuSurfaceRelease"));
+  ok = ok && (ds_wgpuDeviceRelease = (__typeof__(wgpuDeviceRelease)*)dlsym(libwgpu, "wgpuDeviceRelease"));
+  ok = ok && (ds_wgpuAdapterRelease = (__typeof__(wgpuAdapterRelease)*)dlsym(libwgpu, "wgpuAdapterRelease"));
+  ok = ok && (ds_wgpuInstanceRelease = (__typeof__(wgpuInstanceRelease)*)dlsym(libwgpu, "wgpuInstanceRelease"));
   ok = ok && (ds_tvg_engine_init = (__typeof__(tvg_engine_init)*)dlsym(libtvg, "tvg_engine_init"));
   ok = ok && (ds_tvg_engine_term = (__typeof__(tvg_engine_term)*)dlsym(libtvg, "tvg_engine_term"));
-  ok = ok && (ds_tvg_glcanvas_create = (__typeof__(tvg_glcanvas_create)*)dlsym(libtvg, "tvg_glcanvas_create"));
-  ok = ok && (ds_tvg_glcanvas_set_target = (__typeof__(tvg_glcanvas_set_target)*)dlsym(libtvg, "tvg_glcanvas_set_target"));
+  ok = ok && (ds_tvg_wgcanvas_create = (__typeof__(tvg_wgcanvas_create)*)dlsym(libtvg, "tvg_wgcanvas_create"));
+  ok = ok && (ds_tvg_wgcanvas_set_target_with_context = (__typeof__(tvg_wgcanvas_set_target_with_context)*)dlsym(libtvg, "tvg_wgcanvas_set_target_with_context"));
   ok = ok && (ds_tvg_canvas_destroy = (__typeof__(tvg_canvas_destroy)*)dlsym(libtvg, "tvg_canvas_destroy"));
   ok = ok && (ds_tvg_canvas_add = (__typeof__(tvg_canvas_add)*)dlsym(libtvg, "tvg_canvas_add"));
   ok = ok && (ds_tvg_canvas_remove = (__typeof__(tvg_canvas_remove)*)dlsym(libtvg, "tvg_canvas_remove"));
@@ -122,7 +141,10 @@ static bool ds_load(void) {
 static struct {
   bool          open;
   SDL_Window*   window;
-  SDL_GLContext gl;
+  WGPUInstance  instance;
+  WGPUSurface   surface;
+  WGPUAdapter   adapter;
+  WGPUDevice    device;
   Tvg_Canvas    canvas;
   int           width;   // the canvas's target, in pixels
   int           height;
@@ -142,10 +164,90 @@ static bool ds_window(u32 id) {
   return id == 1 && ds.open;
 }
 
+// The window's WebGPU surface, from its Wayland or X11 handles.
+static WGPUSurface ds_surface(void) {
+  SDL_PropertiesID props = ds_SDL_GetWindowProperties(ds.window);
+  const char* driver = ds_SDL_GetCurrentVideoDriver();
+  WGPUSurfaceDescriptor desc = { 0 };
+  WGPUSurfaceSourceWaylandSurface wayland = { 0 };
+  WGPUSurfaceSourceXlibWindow xlib = { 0 };
+  if (driver && strcmp(driver, "wayland") == 0) {
+    wayland.chain.sType = WGPUSType_SurfaceSourceWaylandSurface;
+    wayland.display = ds_SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_DISPLAY_POINTER, NULL);
+    wayland.surface = ds_SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WAYLAND_SURFACE_POINTER, NULL);
+    desc.nextInChain = &wayland.chain;
+  } else if (driver && strcmp(driver, "x11") == 0) {
+    xlib.chain.sType = WGPUSType_SurfaceSourceXlibWindow;
+    xlib.display = ds_SDL_GetPointerProperty(props, SDL_PROP_WINDOW_X11_DISPLAY_POINTER, NULL);
+    xlib.window = (uint64_t)ds_SDL_GetNumberProperty(props, SDL_PROP_WINDOW_X11_WINDOW_NUMBER, 0);
+    desc.nextInChain = &xlib.chain;
+  } else {
+    return NULL;
+  }
+  return ds_wgpuInstanceCreateSurface(ds.instance, &desc);
+}
+
+static void ds_adapter_got(WGPURequestAdapterStatus status, WGPUAdapter adapter,
+  WGPUStringView message, void* out, void* unused) {
+  *(WGPUAdapter*)out = status == WGPURequestAdapterStatus_Success ? adapter : NULL;
+}
+
+static void ds_device_got(WGPURequestDeviceStatus status, WGPUDevice device,
+  WGPUStringView message, void* out, void* unused) {
+  *(WGPUDevice*)out = status == WGPURequestDeviceStatus_Success ? device : NULL;
+}
+
+// The GPU for the window's surface, and a device on it. wgpu-native answers
+// these requests at once; the events are processed in case it doesn't.
+static const char* ds_gpu(void) {
+  ds.instance = ds_wgpuCreateInstance(NULL);
+  if (ds.instance == NULL) {
+    return "wgpuCreateInstance";
+  }
+  ds.surface = ds_surface();
+  if (ds.surface == NULL) {
+    return "the window's surface (Wayland or X11 only)";
+  }
+  WGPURequestAdapterOptions options = { 0 };
+  options.compatibleSurface = ds.surface;
+  options.powerPreference = WGPUPowerPreference_HighPerformance;
+  WGPURequestAdapterCallbackInfo on_adapter = { 0 };
+  on_adapter.mode = WGPUCallbackMode_AllowSpontaneous;
+  on_adapter.callback = ds_adapter_got;
+  on_adapter.userdata1 = &ds.adapter;
+  ds_wgpuInstanceRequestAdapter(ds.instance, &options, on_adapter);
+  for (int i = 0; i < 100 && ds.adapter == NULL; i += 1) {
+    ds_wgpuInstanceProcessEvents(ds.instance);
+  }
+  if (ds.adapter == NULL) {
+    return "a WebGPU adapter";
+  }
+  WGPURequestDeviceCallbackInfo on_device = { 0 };
+  on_device.mode = WGPUCallbackMode_AllowSpontaneous;
+  on_device.callback = ds_device_got;
+  on_device.userdata1 = &ds.device;
+  ds_wgpuAdapterRequestDevice(ds.adapter, NULL, on_device);
+  for (int i = 0; i < 100 && ds.device == NULL; i += 1) {
+    ds_wgpuInstanceProcessEvents(ds.instance);
+  }
+  return ds.device == NULL ? "a WebGPU device" : NULL;
+}
+
+static void ds_gpu_release(void) {
+  if (ds.device) ds_wgpuDeviceRelease(ds.device);
+  if (ds.adapter) ds_wgpuAdapterRelease(ds.adapter);
+  if (ds.surface) ds_wgpuSurfaceRelease(ds.surface);
+  if (ds.instance) ds_wgpuInstanceRelease(ds.instance);
+  ds.device = NULL;
+  ds.adapter = NULL;
+  ds.surface = NULL;
+  ds.instance = NULL;
+}
+
 #ifdef CID(screen_open)
 
-// A window with an OpenGL 3.3 context, synced to the display, taking text
-// input, and a ThorVG canvas drawing into it.
+// A window, taking text input, with a WebGPU device for its surface and a
+// ThorVG canvas drawing onto it.
 Term ds_screen_open_run(Env e, Term* f, IoWork* w) {
   u64 n = 0;
   char* title = io_cstr(e, f[0], &n);
@@ -153,7 +255,7 @@ Term ds_screen_open_run(Env e, Term* f, IoWork* w) {
   u32 height = (u32)f[2];
   if (!ds_load()) {
     free(title);
-    return io_fail(e, 95, "screen: SDL3 and ThorVG (libSDL3.so.0, libthorvg-1.so.1) not found");
+    return io_fail(e, 95, "screen: SDL3, wgpu-native and ThorVG (libSDL3.so.0, libwgpu_native.so, libthorvg-1.so.1) not all found");
   }
   if (ds.open || width < 1 || height < 1 || width > 16384 || height > 16384) {
     free(title);
@@ -163,28 +265,25 @@ Term ds_screen_open_run(Env e, Term* f, IoWork* w) {
     free(title);
     return ds_sdl_fail(e, "SDL_Init");
   }
-  ds_SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-  ds_SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-  ds_SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-  ds_SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
   ds.window = ds_SDL_CreateWindow(title, (int)width, (int)height,
-    SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+    SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
   free(title);
   if (ds.window == NULL) {
     return ds_sdl_fail(e, "SDL_CreateWindow");
   }
-  ds.gl = ds_SDL_GL_CreateContext(ds.window);
-  if (ds.gl == NULL) {
+  const char* missing = ds_gpu();
+  if (missing != NULL) {
+    char msg[256];
+    snprintf(msg, sizeof msg, "screen: no %s", missing);
+    ds_gpu_release();
     ds_SDL_DestroyWindow(ds.window);
-    return ds_sdl_fail(e, "SDL_GL_CreateContext");
+    return io_fail(e, 5, msg);
   }
-  ds_SDL_GL_MakeCurrent(ds.window, ds.gl);
-  ds_SDL_GL_SetSwapInterval(1);
   if (ds_tvg_engine_init(0) != TVG_RESULT_SUCCESS
-    || (ds.canvas = ds_tvg_glcanvas_create(TVG_ENGINE_OPTION_DEFAULT)) == NULL) {
-    ds_SDL_GL_DestroyContext(ds.gl);
+    || (ds.canvas = ds_tvg_wgcanvas_create(TVG_ENGINE_OPTION_DEFAULT)) == NULL) {
+    ds_gpu_release();
     ds_SDL_DestroyWindow(ds.window);
-    return io_fail(e, 5, "screen: ThorVG's OpenGL engine didn't start");
+    return io_fail(e, 5, "screen: ThorVG's WebGPU engine didn't start");
   }
   ds_SDL_StartTextInput(ds.window);
   ds.width = 0;
@@ -471,7 +570,7 @@ static u32 ds_label(const DsWords* b, u32 at, float x, float y, float size, u32 
 #ifdef CID(screen_draw)
 
 // A frame: the background, then each fill and label in order, drawn by
-// ThorVG at the window's size in pixels, and shown.
+// ThorVG onto the window's surface at its size in pixels, and presented.
 Term ds_screen_draw_run(Env e, Term* f, IoWork* w) {
   DsWords b = { 0 };
   ds_words(e, f[2], &b);
@@ -482,8 +581,9 @@ Term ds_screen_draw_run(Env e, Term* f, IoWork* w) {
   int pw = 0, ph = 0;
   ds_SDL_GetWindowSizeInPixels(ds.window, &pw, &ph);
   if (pw != ds.width || ph != ds.height) {
-    ds_tvg_glcanvas_set_target(ds.canvas, NULL, NULL, ds.gl, 0, (uint32_t)pw, (uint32_t)ph,
-      TVG_COLORSPACE_ABGR8888S);
+    Tvg_WgContext ctx = { ds.instance, ds.adapter, ds.device };
+    ds_tvg_wgcanvas_set_target_with_context(ds.canvas, &ctx, ds.surface, (uint32_t)pw,
+      (uint32_t)ph, TVG_COLORSPACE_ABGR8888S, 0);
     ds.width = pw;
     ds.height = ph;
   }
@@ -508,7 +608,7 @@ Term ds_screen_draw_run(Env e, Term* f, IoWork* w) {
   free(b.w);
   ds_tvg_canvas_draw(ds.canvas, true);
   ds_tvg_canvas_sync(ds.canvas);
-  ds_SDL_GL_SwapWindow(ds.window);
+  ds_wgpuSurfacePresent(ds.surface);
   return DS_UNIT(e);
 }
 
@@ -529,7 +629,7 @@ Term ds_screen_close_run(Env e, Term* f, IoWork* w) {
     ds_tvg_font_unload("deui");
   }
   ds_tvg_engine_term();
-  ds_SDL_GL_DestroyContext(ds.gl);
+  ds_gpu_release();
   ds_SDL_DestroyWindow(ds.window);
   ds_SDL_Quit();
   ds.open = false;

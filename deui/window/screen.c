@@ -10,6 +10,12 @@
 // One window at a time, named by the id 1. Events cross into Bend as a flat
 // list of words, and a frame comes back as one; screen.bend says how each
 // is laid out.
+//
+// Bend's coordinates are the window's, as SDL reports the mouse in. The
+// window has the display's full resolution: a frame's coordinates are
+// multiplied by its pixel density when drawn, and fonts are opened at
+// their size times it, so text is rasterized at full resolution rather
+// than stretched.
 
 #include <dlfcn.h>
 #include <SDL3/SDL.h>
@@ -32,6 +38,7 @@ static __typeof__(SDL_SetRenderDrawColor)* ds_SDL_SetRenderDrawColor;
 static __typeof__(SDL_RenderClear)* ds_SDL_RenderClear;
 static __typeof__(SDL_RenderFillRect)* ds_SDL_RenderFillRect;
 static __typeof__(SDL_RenderPresent)* ds_SDL_RenderPresent;
+static __typeof__(SDL_GetWindowPixelDensity)* ds_SDL_GetWindowPixelDensity;
 static __typeof__(TTF_Init)* ds_TTF_Init;
 static __typeof__(TTF_Quit)* ds_TTF_Quit;
 static __typeof__(TTF_OpenFont)* ds_TTF_OpenFont;
@@ -67,6 +74,7 @@ static bool ds_load(void) {
   ok = ok && (ds_SDL_RenderClear = (__typeof__(SDL_RenderClear)*)dlsym(libsdl, "SDL_RenderClear"));
   ok = ok && (ds_SDL_RenderFillRect = (__typeof__(SDL_RenderFillRect)*)dlsym(libsdl, "SDL_RenderFillRect"));
   ok = ok && (ds_SDL_RenderPresent = (__typeof__(SDL_RenderPresent)*)dlsym(libsdl, "SDL_RenderPresent"));
+  ok = ok && (ds_SDL_GetWindowPixelDensity = (__typeof__(SDL_GetWindowPixelDensity)*)dlsym(libsdl, "SDL_GetWindowPixelDensity"));
   ok = ok && (ds_TTF_Init = (__typeof__(TTF_Init)*)dlsym(libttf, "TTF_Init"));
   ok = ok && (ds_TTF_Quit = (__typeof__(TTF_Quit)*)dlsym(libttf, "TTF_Quit"));
   ok = ok && (ds_TTF_OpenFont = (__typeof__(TTF_OpenFont)*)dlsym(libttf, "TTF_OpenFont"));
@@ -120,8 +128,8 @@ static void ds_fonts_close(void) {
   }
 }
 
-// The font at a size, opened on first use; NULL without a font, or when
-// every size is taken.
+// The font at a size in pixels, opened on first use; NULL without a font,
+// or when every size is taken.
 static TTF_Font* ds_font(u32 size) {
   if (ds.font_path == NULL || size == 0) {
     return NULL;
@@ -164,7 +172,7 @@ Term ds_screen_open_run(Env e, Term* f, IoWork* w) {
     return ds_sdl_fail(e, "TTF_Init");
   }
   bool made = ds_SDL_CreateWindowAndRenderer(title, (int)width, (int)height,
-    SDL_WINDOW_RESIZABLE, &ds.window, &ds.renderer);
+    SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY, &ds.window, &ds.renderer);
   free(title);
   if (!made) {
     return ds_sdl_fail(e, "SDL_CreateWindowAndRenderer");
@@ -418,8 +426,9 @@ static void ds_color(u32 rgb) {
     (Uint8)rgb, 255);
 }
 
-// One label: its code points, up to the 0 after them, as UTF-8, drawn with
-// its top left at (x, y). Returns where its words end.
+// One label: its code points, up to the 0 after them, as UTF-8, drawn
+// with its top left at (x, y), size pixels tall, both in pixels. Returns
+// where its words end.
 static u32 ds_label(const DsWords* b, u32 at, float x, float y, u32 size, u32 rgb) {
   u32 end = at;
   while (end < b->n && b->w[end] != 0) {
@@ -454,20 +463,22 @@ Term ds_screen_draw_run(Env e, Term* f, IoWork* w) {
     free(b.w);
     return DS_BAD(e, "window");
   }
+  float d = ds_SDL_GetWindowPixelDensity(ds.window);
+  d = d > 0.0f ? d : 1.0f;
   ds_color((u32)f[1]);
   ds_SDL_RenderClear(ds.renderer);
   u32 i = 0;
   while (i < b.n) {
     u32 op = b.w[i];
     if (op == 1 && i + 6 <= b.n) {
-      SDL_FRect r = { (float)(int32_t)b.w[i + 1], (float)(int32_t)b.w[i + 2],
-        (float)(int32_t)b.w[i + 3], (float)(int32_t)b.w[i + 4] };
+      SDL_FRect r = { (float)(int32_t)b.w[i + 1] * d, (float)(int32_t)b.w[i + 2] * d,
+        (float)(int32_t)b.w[i + 3] * d, (float)(int32_t)b.w[i + 4] * d };
       ds_color(b.w[i + 5]);
       ds_SDL_RenderFillRect(ds.renderer, &r);
       i += 6;
     } else if (op == 2 && i + 5 <= b.n) {
-      i = ds_label(&b, i + 5, (float)(int32_t)b.w[i + 1],
-        (float)(int32_t)b.w[i + 2], b.w[i + 3], b.w[i + 4]);
+      i = ds_label(&b, i + 5, (float)(int32_t)b.w[i + 1] * d,
+        (float)(int32_t)b.w[i + 2] * d, (u32)((float)b.w[i + 3] * d + 0.5f), b.w[i + 4]);
     } else {
       break;
     }

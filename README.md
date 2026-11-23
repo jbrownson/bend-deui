@@ -194,11 +194,12 @@ kernel, which has its own proof in Lean, and confirms nothing relies on
 `leanprover/lean4:v4.34.0`) to build the kernel on first use.
 
 Windows only open from a native build, through SDL3, which runs on
-Wayland or X11. Sizes and positions are in the window's coordinates,
-which SDL scales on a high-density display.
+Wayland or X11. Sizes and positions are in the window's coordinates; on a
+high-density display the window has its full resolution, and the frame,
+its text included, is drawn at it.
 
 Tested with Bend 2.0.40, SDL 3.4.20 and SDL3_ttf 3.2.2. The windows have
-been run here only under Xvfb (X11), driven by xdotool: clicks, Return,
-typing and Backspace. The window examples look for Liberation Sans at
+been run under Xvfb (X11), driven by xdotool: clicks, Return, typing and
+Backspace; and drawn under headless Weston (Wayland) at scale 2. The window examples look for Liberation Sans at
 `/usr/share/fonts/liberation/LiberationSans-Regular.ttf` (`ttf-liberation`
 on Arch); without it, labels are left out, and the window says why.

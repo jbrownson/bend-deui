@@ -27,6 +27,3 @@ commit and change the commit above.
   `window.bend` and `clipboard.bend`. Bend 2.0.40's Base has an event
   constructor `Lost`, and constructor names are global, so the original
   no longer checks.
-- Ankra: a window is created with the arrow cursor (`XCreateFontCursor`,
-  `XC_left_ptr`), in `native/ankra.c`. Ankra sets none, and XWayland then
-  shows no cursor over the window.

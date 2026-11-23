@@ -32,7 +32,6 @@
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
 #include <X11/Xutil.h>
-#include <X11/cursorfont.h>
 #include <X11/XKBlib.h>
 #include <X11/extensions/Xrandr.h>
 
@@ -184,9 +183,8 @@ static void __attribute__((constructor)) ak_x11_connect_use(void) {
 #ifdef CID(x11_create)
 
 // XCreateWindow on the default screen's root: x, y, width, height, the
-// event mask and the background chosen by Bend, with the arrow cursor
-// (XWayland shows none over a window that leaves it unset). Background
-// 0xFFFFFFFF is None: the server never clears what a GPU swapchain presented (also on
+// event mask and the background chosen by Bend. Background 0xFFFFFFFF is
+// None: the server never clears what a GPU swapchain presented (also on
 // resize); any other value is a 0xRRGGBB pixel of the default TrueColor
 // visual, painted by the server.
 Term ak_x11_create_run(Env e, Term* f, IoWork* w) {
@@ -202,10 +200,9 @@ Term ak_x11_create_run(Env e, Term* f, IoWork* w) {
   a.background_pixmap = None;
   a.background_pixel = background;
   a.event_mask = (long)(u32)f[5];
-  a.cursor = XCreateFontCursor(d->dpy, XC_left_ptr);
   Window xid = XCreateWindow(d->dpy, DefaultRootWindow(d->dpy),
     (int)(int32_t)(u32)f[1], (int)(int32_t)(u32)f[2], width, height, 0,
-    CopyFromParent, InputOutput, CopyFromParent, CWEventMask | CWCursor
+    CopyFromParent, InputOutput, CopyFromParent, CWEventMask
     | (background == 0xFFFFFFFFu ? CWBackPixmap : CWBackPixel), &a);
   u32 id = ak_new((AkSlot){ AK_WINDOW, (u32)f[0], d->dpy, xid, 0 });
   if (id == 0) {

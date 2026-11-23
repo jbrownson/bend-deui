@@ -45,7 +45,8 @@ every module's proofs.
   `diff` gets there, what `dmap` returns for each edit, that `map.inc(g)` is
   correct when `g` is, that `dmap` acts exactly where the edits act, and
   that it turns valid edits into valid ones.
-- `scene/`: what's on the screen. A scene is a tree of fills and groups,
+- `scene/`: what's on the screen. A scene is a tree of fills, targets and
+  groups,
   each at an offset from the group it's in, so moving anything is one
   edit (`Translate`). A group's children are edited by position, as a list
   is (`Insert`, `Delete`, `Update`), and `Shift` translates every child
@@ -53,8 +54,11 @@ every module's proofs.
   one for each child below it. A group's children are a chain of the same
   type, built from a list by `chain`, because Bend has no mutual recursion.
   The laws say what each edit does, and that a group's children change
-  exactly as the list they're made from would. Coordinates are
-  bend-kit-int's `I32`.
+  exactly as the list they're made from would. A target is where a
+  pointer lands: `hit` finds the topmost one under a point, as the path to
+  it through each group's children by position, and its tag. The path is
+  the target's identity, and the scene's edits keep it current, so nothing
+  is matched up after an edit. Coordinates are bend-kit-int's `I32`.
 - `column/`: the first view with a derivative. A column stacks rows, each
   as tall as it says, from the top. Its derivative turns an edit to the
   rows into a few edits to its scene, whatever its size: inserting a row
@@ -62,6 +66,14 @@ every module's proofs.
   deleting one deletes it and shifts them back up, and replacing one is
   both. The laws say what those edits are, and that applying them gives
   the column of the edited rows, for every edit and every run of them.
+- `app/`: an app. A state, edited as its edit structure says, a view that
+  is an incremental function from runs of the state's edits to runs of the
+  scene's, and two handlers, fixed code passed as templates: from the
+  state and what a press hit, or which key went down, to a run of edits.
+  An event's edits go to the state, and through the view's derivative to
+  the scene on screen; the view runs once, at launch. The laws say that
+  if the derivative is correct, the scene on screen is the view of the
+  state after every event, as if it had run again.
 
 `examples/`:
 
@@ -72,6 +84,10 @@ every module's proofs.
   moves the rows below it.
 - `column.bend`: a column patched by its derivative's edits, beside the
   column drawn again from the edited rows: the two are the same.
+- `rows.bend`: an app. A column of rows: clicking a row deletes it, and
+  "a" adds one at the top. It plays clicks and a key, then prints the
+  heights left and whether the scene on screen is the view of the rows.
+  It reads its events' float coordinates, so it runs natively.
 
 `change/` and `list/` began in bend-puri, as its `ilc/`, at `7b711ea`; their
 history is there.
@@ -99,6 +115,7 @@ bend deui/list/PROOF.bend     # or one module's laws
 bend examples/lists.bend      # computes a mapped list's edits
 bend examples/scene.bend      # edits a column of rows
 bend examples/column.bend     # patches a column, and draws it again
+bend examples/rows.bend -o rows && ./rows   # plays events through an app
 ```
 
 `bend <file> --verdict` checks a proof a second time with Bend's BendTT

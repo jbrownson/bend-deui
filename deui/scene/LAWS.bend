@@ -19,7 +19,7 @@ def shifted(xs: List<&2, S.Scene>, i: Nat, +dx: I.I32, +dy: I.I32) -> List<&2, S
 
 # Moving
 # ------
-# A fill or a group sits at an offset from the group it's in.
+# A fill, a target or a group sits at an offset from the group it's in.
 
 # LAW: translating a fill moves it.
 law translate_fill:
@@ -31,6 +31,17 @@ law translate_fill:
   for dx: I.I32
   for dy: I.I32
   {S.apply(S.Fill{x, y, w, h, c}, S.Translate{dx, dy}) == S.Fill{(x + dx : I.I32), (y + dy : I.I32), w, h, c} : S.Scene}
+
+# LAW: translating a target moves it.
+law translate_target:
+  for x: I.I32
+  for y: I.I32
+  for w: I.I32
+  for h: I.I32
+  for t: U32
+  for dx: I.I32
+  for dy: I.I32
+  {S.apply(S.Target{x, y, w, h, t}, S.Translate{dx, dy}) == S.Target{(x + dx : I.I32), (y + dy : I.I32), w, h, t} : S.Scene}
 
 # LAW: translating a group moves it, and what's in it with it: its
 # children's offsets are from the group, so they stay as they are.
@@ -91,3 +102,62 @@ law group_shift:
 # LAW: a scene changes by one edit as S.apply says.
 law edit_structure:
   {S.edit_structure() == C.EditStructure{S.Scene, S.Edit, e => s => S.apply(s, e)} : C.EditStructure}
+
+# Hitting
+# -------
+# hit(s, i, px, py) is what the point (px, py) lands on in s: the topmost
+# target containing it, as the path to it through each group's children
+# by position, and its tag. i is the position of a chain's first child.
+
+# LAW: a fill is never hit.
+law hit_fill:
+  for x: I.I32
+  for y: I.I32
+  for w: I.I32
+  for h: I.I32
+  for c: U32
+  for +i: Nat
+  for +px: I.I32
+  for +py: I.I32
+  {S.hit(S.Fill{x, y, w, h, c}, i, px, py) == None{} : Maybe<&2, S.Hit>}
+
+# LAW: a target is hit where the point is inside it, from its left and top
+# edges up to but not including its right and bottom ones.
+law hit_target:
+  for x: I.I32
+  for y: I.I32
+  for w: I.I32
+  for h: I.I32
+  for t: U32
+  for +i: Nat
+  for +px: I.I32
+  for +py: I.I32
+  {S.hit(S.Target{x, y, w, h, t}, i, px, py) == S.hit.target(Bool.and(S.within(x, w, px), S.within(y, h, py)), t) : Maybe<&2, S.Hit>}
+
+# LAW: inside a group, the point is in its children's coordinates, moved by
+# the group's offset.
+law hit_group:
+  for x: I.I32
+  for y: I.I32
+  for cs: S.Scene
+  for +i: Nat
+  for +px: I.I32
+  for +py: I.I32
+  {S.hit(S.Group{x, y, cs}, i, px, py) == S.hit(cs, 0n, (px - x : I.I32), (py - y : I.I32)) : Maybe<&2, S.Hit>}
+
+# LAW: a group's later children are on top, so they're asked first, and a
+# hit inside a child has the child's position on its path.
+law hit_child:
+  for f: S.Scene
+  for r: S.Scene
+  for +i: Nat
+  for +px: I.I32
+  for +py: I.I32
+  {S.hit(S.Child{f, r}, i, px, py) == S.hit.later(S.hit(r, 1n+i, px, py), S.hit.under(i, S.hit(f, 0n, px, py))) : Maybe<&2, S.Hit>}
+
+# LAW: a group with no children is never hit.
+law hit_end:
+  for +i: Nat
+  for +px: I.I32
+  for +py: I.I32
+  {S.hit(S.End{}, i, px, py) == None{} : Maybe<&2, S.Hit>}

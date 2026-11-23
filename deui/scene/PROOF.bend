@@ -85,6 +85,9 @@ def chain_shift(xs, i, dx, dy):
 def Laws.translate_fill(x, y, w, h, c, dx, dy):
   {==}
 
+def Laws.translate_target(x, y, w, h, t, dx, dy):
+  {==}
+
 def Laws.translate_group(x, y, cs, dx, dy):
   {==}
 
@@ -111,4 +114,22 @@ def Laws.group_shift(x, y, xs, i, dx, dy):
 # -----
 
 def Laws.edit_structure():
+  {==}
+
+# Hitting
+# -------
+
+def Laws.hit_fill(x, y, w, h, c, i, px, py):
+  {==}
+
+def Laws.hit_target(x, y, w, h, t, i, px, py):
+  {==}
+
+def Laws.hit_group(x, y, cs, i, px, py):
+  {==}
+
+def Laws.hit_child(f, r, i, px, py):
+  {==}
+
+def Laws.hit_end(i, px, py):
   {==}

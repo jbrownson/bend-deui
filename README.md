@@ -86,27 +86,32 @@ every module's proofs.
   from what the view kept, to the scene on screen; the view runs once, at
   launch. The laws say that if the derivative is correct, the scene on
   screen and what the view keeps are what the view gives for the state
-  after every event, as if it had run again.
+  after every event, as if it had run again. A batch of events' turn
+  (`turns`) also gives the scene edits it made, and the laws say they take
+  the scene on screen before the events to the one after them, so a copy
+  kept by those edits stays the scene on screen.
 
 `deui/window/`, the native window, outside the proofs since it calls
 native code:
 
 - `screen.bend`: the screen's effects: open a window, choose the font
-  labels are drawn in, wait for events, draw a frame, close. Events come
-  in, and frames go out, as lists of words, laid out as it says; `events`
-  reads Base's events from them, and `frame` writes a scene as one, each
-  fill and label at its offset plus its groups', later ones on top. The
-  scene itself is kept, and changes only by its edits; `frame` runs on
-  every frame.
+  labels are drawn in, wait for events, set the scene the screen keeps,
+  apply edits to it, draw it, close. Events come in, and scenes and edits
+  go out, as lists of words, laid out as it says; `events` reads Base's
+  events from them, and `scene.words` and `edits.words` write them.
 - `screen.c`: those effects, natively. [SDL3](https://libsdl.org) gives
   the window and its events,
   [wgpu-native](https://github.com/gfx-rs/wgpu-native) gives WebGPU, on
   Vulkan, and [ThorVG](https://www.thorvg.org)'s WebGPU engine draws each
   frame on the GPU, its labels included. All three are opened with
-  `dlopen`, as Bend links no library of its own choosing.
-- `window.bend`: runs an app in a window: draws the scene on screen, waits
-  for events, and plays them through the app, until the window closes.
-  The view runs once, at launch.
+  `dlopen`, as Bend links no library of its own choosing. The screen keeps
+  a copy of the scene, with a ThorVG paint for each part that's drawn, and
+  applies each edit to it as `S.apply` does, changing only the paints it
+  touches; a frame only asks ThorVG to draw what it keeps.
+- `window.bend`: runs an app in a window: sets the screen's scene at
+  launch, then draws it, waits for events, plays them through the app, and
+  sends the screen the edits they made, until the window closes. The view
+  runs once, at launch.
 
 `examples/`:
 
@@ -156,11 +161,19 @@ out the 9 ms that making the list and its first view takes:
 | a new item at the top each time, through the derivative | 67 ms | 0.17 ms |
 
 Typing changes one row, as tall as before, so its edits touch that row
-alone. A new item at the top moves every row below it by one `Shift`, which
+alone, in the scene and in the paints the screen keeps. A new item at the top moves every row below it by one `Shift`, which
 still visits each of them, so its cost grows with the list; each visit is a
 translation, not the row made again. Finding a row by position walks the
 list to it, so an edit's cost also grows with how far down it is. Neither
 is measured past this.
+
+Drawing is the larger cost, and it's still the size of the scene. ThorVG
+keeps each paint's prepared geometry between frames, but every frame it
+walks every paint, uploads its geometry to the GPU and records its draw,
+rows off screen included. In the window with 2000 items, on Mesa's
+software Vulkan, a keystroke costs about 60 ms of CPU, the same as
+rebuilding every paint each frame did: 61% is the software GPU, about a
+third is ThorVG and wgpu-native, and 0.2% is deui.
 
 ## Dependencies
 

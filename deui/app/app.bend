@@ -84,3 +84,60 @@ def scene(-cs: C.EditStructure, -view: C.Cached<C.runs(~cs), C.runs(~S.edit_stru
   match m:
     case Model{state, shown}:
       C.Kept.result(S.Scene, Cache(cs, view), shown)
+
+# Turns
+# -----
+# The screen keeps a copy of the scene of its own, so it's sent the scene's
+# edits rather than the scene.
+
+# What events make: the model after them, and the scene edits that take
+# the scene on screen from before them to after.
+type Turn<-cs: C.EditStructure, -view: C.Cached<C.runs(~cs), C.runs(~S.edit_structure())>> is Data:
+  Turn{model: Model<cs, view>, edits: List<&2, S.Edit>}
+
+def Turn.model(-cs: C.EditStructure, -view: C.Cached<C.runs(~cs), C.runs(~S.edit_structure())>, t: Turn<cs, view>) -> Model<cs, view>:
+  match t:
+    case Turn{m, es}:
+      m
+
+def Turn.edits(-cs: C.EditStructure, -view: C.Cached<C.runs(~cs), C.runs(~S.edit_structure())>, t: Turn<cs, view>) -> List<&2, S.Edit>:
+  match t:
+    case Turn{m, es}:
+      es
+
+# A run of edits' turn: the model, as edit gives it, and the view's
+# derivative's scene edits.
+def turn.of(~cs: C.EditStructure, ~view: C.Cached<C.runs(~cs), C.runs(~S.edit_structure())>,
+  +state: C.Value(cs), +shown: C.Kept<S.Scene, Cache(cs, view)>, +es: List<&2, C.Edit(cs)>) -> Turn<cs, view>:
+  +r = C.Cached.df(C.runs(~cs), C.runs(~S.edit_structure()), view)(C.Kept.cache(S.Scene, Cache(cs, view), shown), es)
+  Turn{Model{C.run(~cs, es, state), C.Kept.after(~C.runs(~S.edit_structure()), Cache(cs, view), r, C.Kept.result(S.Scene, Cache(cs, view), shown))}, C.Kept.result(List<&2, S.Edit>, Cache(cs, view), r)}
+
+# An event's turn.
+def turn(~cs: C.EditStructure, ~view: C.Cached<C.runs(~cs), C.runs(~S.edit_structure())>,
+  ~press: C.Value(cs) -> S.Hit -> List<&2, C.Edit(cs)>, ~key: C.Value(cs) -> U32 -> List<&2, C.Edit(cs)>, ~text: C.Value(cs) -> String -> List<&2, C.Edit(cs)>,
+  m: Model<cs, view>, event: Event) -> Turn<cs, view>:
+  match m:
+    case Model{+state, +shown}:
+      turn.of(~cs, ~view, state, shown, respond(~cs, ~press, ~key, ~text, state, C.Kept.result(S.Scene, Cache(cs, view), shown), event))
+
+# A turn after edits es: its edits, after es.
+def turn.after(-cs: C.EditStructure, -view: C.Cached<C.runs(~cs), C.runs(~S.edit_structure())>, es: List<&2, S.Edit>, t: Turn<cs, view>) -> Turn<cs, view>:
+  match t:
+    case Turn{m, more}:
+      Turn{m, List.append(&2, S.Edit, es, more)}
+
+# The turn of events, in order, from a turn so far.
+def turns.go(~cs: C.EditStructure, ~view: C.Cached<C.runs(~cs), C.runs(~S.edit_structure())>,
+  ~press: C.Value(cs) -> S.Hit -> List<&2, C.Edit(cs)>, ~key: C.Value(cs) -> U32 -> List<&2, C.Edit(cs)>, ~text: C.Value(cs) -> String -> List<&2, C.Edit(cs)>,
+  events: List<&2, Event>, t: Turn<cs, view>) -> Turn<cs, view>:
+  match events t:
+    case Nil{} t:
+      t
+    case Con{e, rest} Turn{m, es}:
+      turns.go(~cs, ~view, ~press, ~key, ~text, rest, turn.after(cs, view, es, turn(~cs, ~view, ~press, ~key, ~text, m, e)))
+
+# The turn of events, in order.
+def turns(~cs: C.EditStructure, ~view: C.Cached<C.runs(~cs), C.runs(~S.edit_structure())>,
+  ~press: C.Value(cs) -> S.Hit -> List<&2, C.Edit(cs)>, ~key: C.Value(cs) -> U32 -> List<&2, C.Edit(cs)>, ~text: C.Value(cs) -> String -> List<&2, C.Edit(cs)>,
+  events: List<&2, Event>, m: Model<cs, view>) -> Turn<cs, view>:
+  turns.go(~cs, ~view, ~press, ~key, ~text, events, Turn{m, Nil{}})

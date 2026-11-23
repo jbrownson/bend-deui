@@ -15,9 +15,13 @@
 // is laid out.
 //
 // Bend's coordinates are the window's, as SDL reports the mouse in. The
-// window has the display's full resolution: a frame's coordinates and its
-// labels' sizes are multiplied by its pixel density when drawn, so
-// everything, text included, is drawn at full resolution.
+// window has the display's full resolution, and the kept scene is drawn
+// scaled by its pixel density, so everything, text included, is drawn at
+// full resolution.
+//
+// The screen keeps a copy of the scene, set once and then changed only by
+// the scene's edits, and ThorVG keeps a paint for each part of it that's
+// drawn. A frame only asks ThorVG to draw what it keeps.
 
 #include <dlfcn.h>
 #include <SDL3/SDL.h>
@@ -60,6 +64,14 @@ static __typeof__(tvg_wgcanvas_set_target_with_context)* ds_tvg_wgcanvas_set_tar
 static __typeof__(tvg_canvas_destroy)* ds_tvg_canvas_destroy;
 static __typeof__(tvg_canvas_add)* ds_tvg_canvas_add;
 static __typeof__(tvg_canvas_remove)* ds_tvg_canvas_remove;
+static __typeof__(tvg_paint_rel)* ds_tvg_paint_rel;
+static __typeof__(tvg_shape_reset)* ds_tvg_shape_reset;
+static __typeof__(tvg_canvas_update)* ds_tvg_canvas_update;
+static __typeof__(tvg_paint_scale)* ds_tvg_paint_scale;
+static __typeof__(tvg_scene_remove)* ds_tvg_scene_remove;
+static __typeof__(tvg_scene_insert)* ds_tvg_scene_insert;
+static __typeof__(tvg_scene_add)* ds_tvg_scene_add;
+static __typeof__(tvg_scene_new)* ds_tvg_scene_new;
 static __typeof__(tvg_canvas_draw)* ds_tvg_canvas_draw;
 static __typeof__(tvg_canvas_sync)* ds_tvg_canvas_sync;
 static __typeof__(tvg_shape_new)* ds_tvg_shape_new;
@@ -118,6 +130,14 @@ static bool ds_load(void) {
   ok = ok && (ds_tvg_canvas_destroy = (__typeof__(tvg_canvas_destroy)*)dlsym(libtvg, "tvg_canvas_destroy"));
   ok = ok && (ds_tvg_canvas_add = (__typeof__(tvg_canvas_add)*)dlsym(libtvg, "tvg_canvas_add"));
   ok = ok && (ds_tvg_canvas_remove = (__typeof__(tvg_canvas_remove)*)dlsym(libtvg, "tvg_canvas_remove"));
+  ok = ok && (ds_tvg_paint_rel = (__typeof__(tvg_paint_rel)*)dlsym(libtvg, "tvg_paint_rel"));
+  ok = ok && (ds_tvg_shape_reset = (__typeof__(tvg_shape_reset)*)dlsym(libtvg, "tvg_shape_reset"));
+  ok = ok && (ds_tvg_canvas_update = (__typeof__(tvg_canvas_update)*)dlsym(libtvg, "tvg_canvas_update"));
+  ok = ok && (ds_tvg_paint_scale = (__typeof__(tvg_paint_scale)*)dlsym(libtvg, "tvg_paint_scale"));
+  ok = ok && (ds_tvg_scene_remove = (__typeof__(tvg_scene_remove)*)dlsym(libtvg, "tvg_scene_remove"));
+  ok = ok && (ds_tvg_scene_insert = (__typeof__(tvg_scene_insert)*)dlsym(libtvg, "tvg_scene_insert"));
+  ok = ok && (ds_tvg_scene_add = (__typeof__(tvg_scene_add)*)dlsym(libtvg, "tvg_scene_add"));
+  ok = ok && (ds_tvg_scene_new = (__typeof__(tvg_scene_new)*)dlsym(libtvg, "tvg_scene_new"));
   ok = ok && (ds_tvg_canvas_draw = (__typeof__(tvg_canvas_draw)*)dlsym(libtvg, "tvg_canvas_draw"));
   ok = ok && (ds_tvg_canvas_sync = (__typeof__(tvg_canvas_sync)*)dlsym(libtvg, "tvg_canvas_sync"));
   ok = ok && (ds_tvg_shape_new = (__typeof__(tvg_shape_new)*)dlsym(libtvg, "tvg_shape_new"));
@@ -146,6 +166,11 @@ static struct {
   WGPUAdapter   adapter;
   WGPUDevice    device;
   Tvg_Canvas    canvas;
+  Tvg_Paint     background;  // a shape filling the window, below the scene
+  Tvg_Paint     base;        // a scene holding the kept scene's paint,
+                             // scaled by the pixel density
+  float         density;
+  struct DsNode* root;       // the kept scene
   int           width;   // the canvas's target, in pixels
   int           height;
   bool          font;    // whether a font is loaded, as "deui"
@@ -285,6 +310,12 @@ Term ds_screen_open_run(Env e, Term* f, IoWork* w) {
     ds_SDL_DestroyWindow(ds.window);
     return io_fail(e, 5, "screen: ThorVG's WebGPU engine didn't start");
   }
+  ds.background = ds_tvg_shape_new();
+  ds.base = ds_tvg_scene_new();
+  ds_tvg_canvas_add(ds.canvas, ds.background);
+  ds_tvg_canvas_add(ds.canvas, ds.base);
+  ds.density = 0;
+  ds.root = NULL;
   ds_SDL_StartTextInput(ds.window);
   ds.width = 0;
   ds.height = 0;
@@ -518,9 +549,6 @@ static void __attribute__((constructor)) ds_screen_wait_use(void) {
 #endif
 
 
-// Drawing
-// -------
-
 // The words of a List<U32>, consumed.
 static void ds_words(Env e, Term s, DsWords* b) {
   while (term_aux(s) == CID(Con)) {
@@ -531,51 +559,402 @@ static void ds_words(Env e, Term s, DsWords* b) {
   }
 }
 
-// A filled rectangle, in pixels.
-static void ds_rect(float x, float y, float w, float h, u32 rgb) {
-  Tvg_Paint p = ds_tvg_shape_new();
-  ds_tvg_shape_append_rect(p, x, y, w, h, 0, 0, true);
-  ds_tvg_shape_set_fill_color(p, (uint8_t)(rgb >> 16), (uint8_t)(rgb >> 8), (uint8_t)rgb, 255);
-  ds_tvg_canvas_add(ds.canvas, p);
+// The kept scene
+// --------------
+
+// A part of the scene. A Fill, Label or Target is at (x, y) in its group; a
+// Group at (x, y) holds its children in body; a chain, an End or Child, is
+// its children in order and then whatever ends it: tail, which is NULL for
+// End, or any part that isn't a Child. Fills, labels, groups and chains
+// have a paint, in the paint of the group or chain they're in; targets
+// have none.
+enum { DS_FILL = 1, DS_LABEL, DS_TARGET, DS_GROUP, DS_CHAIN };
+
+typedef struct DsNode {
+  int              kind;
+  float            x, y;
+  Tvg_Paint        paint;
+  struct DsNode*   body;      // a group's
+  struct DsNode**  kids;      // a chain's
+  u32              len, cap;
+  struct DsNode*   tail;      // a chain's, or NULL for End
+} DsNode;
+
+// Frees a part and everything in it; its paints are ThorVG's to free.
+static void ds_free(DsNode* n) {
+  if (n == NULL) {
+    return;
+  }
+  ds_free(n->body);
+  for (u32 i = 0; i < n->len; i += 1) {
+    ds_free(n->kids[i]);
+  }
+  free(n->kids);
+  ds_free(n->tail);
+  free(n);
 }
 
-// One label: its code points, up to the 0 after them, as UTF-8, drawn
-// with its top left at (x, y), size pixels tall, both in pixels. ThorVG
-// takes sizes in points at 96 per inch, 4/3 of a pixel each. Returns where
-// its words end.
-static u32 ds_label(const DsWords* b, u32 at, float x, float y, float size, u32 rgb) {
-  u32 end = at;
-  while (end < b->n && b->w[end] != 0) {
-    end += 1;
-  }
-  if (ds.font && end > at && size > 0) {
-    char* s = io_mem(malloc((end - at) * 4 + 1));
-    u64 n = 0;
-    for (u32 i = at; i < end; i += 1) {
-      n += io_utf8(s + n, b->w[i]);
-    }
-    s[n] = 0;
-    Tvg_Paint t = ds_tvg_text_new();
-    ds_tvg_text_set_font(t, "deui");
-    ds_tvg_text_set_size(t, size * 0.75f);
-    ds_tvg_text_set_text(t, s);
-    ds_tvg_text_set_color(t, (uint8_t)(rgb >> 16), (uint8_t)(rgb >> 8), (uint8_t)rgb);
-    ds_tvg_paint_translate(t, x, y);
-    ds_tvg_canvas_add(ds.canvas, t);
-    free(s);
-  }
-  return end + 1;
+static DsNode* ds_node(int kind) {
+  DsNode* n = io_mem(calloc(1, sizeof(DsNode)));
+  n->kind = kind;
+  return n;
 }
+
+static void ds_place(DsNode* n) {
+  if (n->paint) {
+    ds_tvg_paint_translate(n->paint, n->x, n->y);
+  }
+}
+
+// Reading the words of a scene, from b->w[*at] on.
+typedef struct {
+  const u32* w;
+  u32 n;
+  u32 at;
+} DsReader;
+
+static u32 ds_next(DsReader* r) {
+  return r->at < r->n ? r->w[r->at++] : 0;
+}
+
+static float ds_i32(DsReader* r) {
+  return (float)(int32_t)ds_next(r);
+}
+
+// The paint a part is drawn by within a chain, or NULL.
+static Tvg_Paint ds_paint(DsNode* n) {
+  return n ? n->paint : NULL;
+}
+
+static DsNode* ds_read(DsReader* r);
+
+// A label's text, as UTF-8, from its code points up to a 0.
+static char* ds_utf8(DsReader* r) {
+  u32 from = r->at;
+  while (r->at < r->n && r->w[r->at] != 0) {
+    r->at += 1;
+  }
+  char* s = io_mem(malloc((r->at - from) * 4 + 1));
+  u64 k = 0;
+  for (u32 i = from; i < r->at; i += 1) {
+    k += io_utf8(s + k, r->w[i]);
+  }
+  s[k] = 0;
+  if (r->at < r->n) {
+    r->at += 1;
+  }
+  return s;
+}
+
+static void ds_chain_put(DsNode* c, u32 i, DsNode* kid);
+
+// A chain from its first Child on: its children, then what ends it.
+static DsNode* ds_read_chain(DsReader* r) {
+  DsNode* c = ds_node(DS_CHAIN);
+  c->paint = ds_tvg_scene_new();
+  for (;;) {
+    u32 k = r->at < r->n ? r->w[r->at] : 5;
+    if (k == 6) {
+      r->at += 1;
+      ds_chain_put(c, c->len, ds_read(r));
+    } else if (k == 5) {
+      r->at += 1;
+      return c;
+    } else {
+      c->tail = ds_read(r);
+      if (c->tail->paint) {
+        ds_tvg_scene_add(c->paint, c->tail->paint);
+      }
+      return c;
+    }
+  }
+}
+
+static DsNode* ds_read(DsReader* r) {
+  u32 k = r->at < r->n ? r->w[r->at] : 5;
+  if (k == 5 || k == 6) {
+    return ds_read_chain(r);
+  }
+  r->at += 1;
+  DsNode* n;
+  if (k == 1) {
+    n = ds_node(DS_FILL);
+    n->x = ds_i32(r);
+    n->y = ds_i32(r);
+    float w = ds_i32(r), h = ds_i32(r);
+    u32 rgb = ds_next(r);
+    n->paint = ds_tvg_shape_new();
+    ds_tvg_shape_append_rect(n->paint, 0, 0, w, h, 0, 0, true);
+    ds_tvg_shape_set_fill_color(n->paint, (uint8_t)(rgb >> 16), (uint8_t)(rgb >> 8), (uint8_t)rgb, 255);
+  } else if (k == 2) {
+    n = ds_node(DS_LABEL);
+    n->x = ds_i32(r);
+    n->y = ds_i32(r);
+    float size = (float)ds_next(r);
+    u32 rgb = ds_next(r);
+    char* text = ds_utf8(r);
+    n->paint = ds_tvg_text_new();
+    // ThorVG takes sizes in points at 96 per inch, 4/3 of a pixel each.
+    ds_tvg_text_set_font(n->paint, "deui");
+    ds_tvg_text_set_size(n->paint, size * 0.75f);
+    ds_tvg_text_set_text(n->paint, ds.font ? text : "");
+    ds_tvg_text_set_color(n->paint, (uint8_t)(rgb >> 16), (uint8_t)(rgb >> 8), (uint8_t)rgb);
+    free(text);
+  } else if (k == 3) {
+    n = ds_node(DS_TARGET);
+  } else if (k == 4) {
+    n = ds_node(DS_GROUP);
+    n->x = ds_i32(r);
+    n->y = ds_i32(r);
+    n->paint = ds_tvg_scene_new();
+    n->body = ds_read(r);
+    if (n->body->paint) {
+      ds_tvg_scene_add(n->paint, n->body->paint);
+    }
+  } else {
+    r->at = r->n;
+    return ds_node(DS_TARGET);
+  }
+  ds_place(n);
+  return n;
+}
+
+// Puts kid at position i among a chain's children, its paint before the
+// next paint after it, in the chain's.
+static void ds_chain_put(DsNode* c, u32 i, DsNode* kid) {
+  if (c->len == c->cap) {
+    c->cap = c->cap ? c->cap * 2 : 8;
+    c->kids = io_mem(realloc(c->kids, c->cap * sizeof(DsNode*)));
+  }
+  memmove(c->kids + i + 1, c->kids + i, (c->len - i) * sizeof(DsNode*));
+  c->kids[i] = kid;
+  c->len += 1;
+  if (kid->paint) {
+    Tvg_Paint before = NULL;
+    for (u32 j = i + 1; j < c->len && before == NULL; j += 1) {
+      before = ds_paint(c->kids[j]);
+    }
+    before = before ? before : ds_paint(c->tail);
+    if (before) {
+      ds_tvg_scene_insert(c->paint, kid->paint, before);
+    } else {
+      ds_tvg_scene_add(c->paint, kid->paint);
+    }
+  }
+}
+
+static void ds_chain_take(DsNode* c, u32 i) {
+  DsNode* kid = c->kids[i];
+  memmove(c->kids + i, c->kids + i + 1, (c->len - i - 1) * sizeof(DsNode*));
+  c->len -= 1;
+  if (kid->paint) {
+    ds_tvg_scene_remove(c->paint, kid->paint);
+  }
+  ds_free(kid);
+}
+
+static void ds_skip_scene(DsReader* r);
+static void ds_skip_edit(DsReader* r);
+
+static void ds_apply(DsNode* n, DsReader* r);
+
+static void ds_translate(DsNode* n, float dx, float dy) {
+  if (n->kind == DS_FILL || n->kind == DS_LABEL || n->kind == DS_TARGET || n->kind == DS_GROUP) {
+    n->x += dx;
+    n->y += dy;
+    ds_place(n);
+  }
+}
+
+// Shift from position `from` in what n's chain edits reach: n itself if
+// it's a chain, a group's body, nothing otherwise.
+static void ds_shift(DsNode* n, u32 from, float dx, float dy) {
+  if (n->kind == DS_GROUP) {
+    ds_shift(n->body, from, dx, dy);
+  } else if (n->kind == DS_CHAIN) {
+    for (u32 j = from; j < n->len; j += 1) {
+      ds_translate(n->kids[j], dx, dy);
+    }
+    if (n->tail) {
+      ds_shift(n->tail, from > n->len ? from - n->len : 0, dx, dy);
+    }
+  }
+}
+
+// Insert at i: a group's body, or a chain's children; past a chain's end,
+// what ends it, or appended after End. Returns whether kid was put.
+static bool ds_insert(DsNode* n, u32 i, DsNode* kid) {
+  if (n->kind == DS_GROUP) {
+    return ds_insert(n->body, i, kid);
+  }
+  if (n->kind != DS_CHAIN) {
+    return false;
+  }
+  if (i < n->len || n->tail == NULL) {
+    ds_chain_put(n, i < n->len ? i : n->len, kid);
+    return true;
+  }
+  return ds_insert(n->tail, i - n->len, kid);
+}
+
+static void ds_delete(DsNode* n, u32 i) {
+  if (n->kind == DS_GROUP) {
+    ds_delete(n->body, i);
+  } else if (n->kind == DS_CHAIN) {
+    if (i < n->len) {
+      ds_chain_take(n, i);
+    } else if (n->tail) {
+      ds_delete(n->tail, i - n->len);
+    }
+  }
+}
+
+// The part at i that Update reaches, or NULL.
+static DsNode* ds_at(DsNode* n, u32 i) {
+  if (n->kind == DS_GROUP) {
+    return ds_at(n->body, i);
+  }
+  if (n->kind != DS_CHAIN) {
+    return NULL;
+  }
+  if (i < n->len) {
+    return n->kids[i];
+  }
+  return n->tail ? ds_at(n->tail, i - n->len) : NULL;
+}
+
+static void ds_skip_scene(DsReader* r) {
+  u32 k = ds_next(r);
+  if (k == 1) {
+    r->at += 5;
+  } else if (k == 2) {
+    r->at += 4;
+    while (r->at < r->n && r->w[r->at] != 0) {
+      r->at += 1;
+    }
+    r->at += 1;
+  } else if (k == 4) {
+    r->at += 2;
+    ds_skip_scene(r);
+  } else if (k == 6) {
+    ds_skip_scene(r);
+    ds_skip_scene(r);
+  }
+}
+
+static void ds_skip_edit(DsReader* r) {
+  u32 k = ds_next(r);
+  if (k == 1) {
+    r->at += 2;
+  } else if (k == 2) {
+    r->at += 1;
+    ds_skip_scene(r);
+  } else if (k == 3) {
+    r->at += 1;
+  } else if (k == 4) {
+    r->at += 1;
+    ds_skip_edit(r);
+  } else if (k == 5) {
+    r->at += 3;
+  }
+}
+
+// An edit, read from the words, applied to n as S.apply does, which leaves
+// a part an edit doesn't fit as it is. The words are read whether or not
+// the edit applies.
+static void ds_apply(DsNode* n, DsReader* r) {
+  u32 k = ds_next(r);
+  if (k == 1) {
+    float dx = ds_i32(r), dy = ds_i32(r);
+    ds_translate(n, dx, dy);
+  } else if (k == 2) {
+    u32 i = ds_next(r);
+    DsNode* kid = ds_read(r);
+    if (!ds_insert(n, i, kid)) {
+      if (kid->paint) {
+        ds_tvg_paint_rel(kid->paint);
+      }
+      ds_free(kid);
+    }
+  } else if (k == 3) {
+    ds_delete(n, ds_next(r));
+  } else if (k == 4) {
+    DsNode* at = ds_at(n, ds_next(r));
+    if (at) {
+      ds_apply(at, r);
+    } else {
+      ds_skip_edit(r);
+    }
+  } else if (k == 5) {
+    u32 from = ds_next(r);
+    float dx = ds_i32(r), dy = ds_i32(r);
+    ds_shift(n, from, dx, dy);
+  } else {
+    r->at = r->n;
+  }
+}
+
+#ifdef CID(screen_scene)
+
+// Sets the kept scene, replacing the one before.
+Term ds_screen_scene_run(Env e, Term* f, IoWork* w) {
+  DsWords b = { 0 };
+  ds_words(e, f[1], &b);
+  if (!ds_window((u32)f[0])) {
+    free(b.w);
+    return DS_BAD(e, "window");
+  }
+  if (ds.root) {
+    if (ds.root->paint) {
+      ds_tvg_scene_remove(ds.base, ds.root->paint);
+    }
+    ds_free(ds.root);
+  }
+  DsReader r = { b.w, b.n, 0 };
+  ds.root = ds_read(&r);
+  if (ds.root->paint) {
+    ds_tvg_scene_add(ds.base, ds.root->paint);
+  }
+  free(b.w);
+  return DS_UNIT(e);
+}
+
+static void __attribute__((constructor)) ds_screen_scene_use(void) {
+  io_eff(CID(screen_scene), ds_screen_scene_run);
+}
+
+#endif
+
+#ifdef CID(screen_edit)
+
+// Applies a run of edits to the kept scene, in order.
+Term ds_screen_edit_run(Env e, Term* f, IoWork* w) {
+  DsWords b = { 0 };
+  ds_words(e, f[1], &b);
+  if (!ds_window((u32)f[0]) || ds.root == NULL) {
+    free(b.w);
+    return DS_BAD(e, "window, or no scene");
+  }
+  DsReader r = { b.w, b.n, 0 };
+  while (r.at < r.n) {
+    ds_apply(ds.root, &r);
+  }
+  free(b.w);
+  return DS_UNIT(e);
+}
+
+static void __attribute__((constructor)) ds_screen_edit_use(void) {
+  io_eff(CID(screen_edit), ds_screen_edit_run);
+}
+
+#endif
 
 #ifdef CID(screen_draw)
 
-// A frame: the background, then each fill and label in order, drawn by
-// ThorVG onto the window's surface at its size in pixels, and presented.
+// Draws the kept scene on a background of 0xRRGGBB, at the window's size
+// and pixel density, and presents it.
 Term ds_screen_draw_run(Env e, Term* f, IoWork* w) {
-  DsWords b = { 0 };
-  ds_words(e, f[2], &b);
   if (!ds_window((u32)f[0])) {
-    free(b.w);
     return DS_BAD(e, "window");
   }
   int pw = 0, ph = 0;
@@ -587,25 +966,17 @@ Term ds_screen_draw_run(Env e, Term* f, IoWork* w) {
     ds.width = pw;
     ds.height = ph;
   }
+  u32 rgb = (u32)f[1];
+  ds_tvg_shape_reset(ds.background);
+  ds_tvg_shape_append_rect(ds.background, 0, 0, (float)pw, (float)ph, 0, 0, true);
+  ds_tvg_shape_set_fill_color(ds.background, (uint8_t)(rgb >> 16), (uint8_t)(rgb >> 8), (uint8_t)rgb, 255);
   float d = ds_SDL_GetWindowPixelDensity(ds.window);
   d = d > 0.0f ? d : 1.0f;
-  ds_tvg_canvas_remove(ds.canvas, NULL);
-  ds_rect(0, 0, (float)pw, (float)ph, (u32)f[1]);
-  u32 i = 0;
-  while (i < b.n) {
-    u32 op = b.w[i];
-    if (op == 1 && i + 6 <= b.n) {
-      ds_rect((float)(int32_t)b.w[i + 1] * d, (float)(int32_t)b.w[i + 2] * d,
-        (float)(int32_t)b.w[i + 3] * d, (float)(int32_t)b.w[i + 4] * d, b.w[i + 5]);
-      i += 6;
-    } else if (op == 2 && i + 5 <= b.n) {
-      i = ds_label(&b, i + 5, (float)(int32_t)b.w[i + 1] * d,
-        (float)(int32_t)b.w[i + 2] * d, (float)b.w[i + 3] * d, b.w[i + 4]);
-    } else {
-      break;
-    }
+  if (d != ds.density) {
+    ds_tvg_paint_scale(ds.base, d);
+    ds.density = d;
   }
-  free(b.w);
+  ds_tvg_canvas_update(ds.canvas);
   ds_tvg_canvas_draw(ds.canvas, true);
   ds_tvg_canvas_sync(ds.canvas);
   ds_wgpuSurfacePresent(ds.surface);
@@ -624,6 +995,8 @@ Term ds_screen_close_run(Env e, Term* f, IoWork* w) {
   if (!ds_window((u32)f[0])) {
     return DS_BAD(e, "window");
   }
+  ds_free(ds.root);
+  ds.root = NULL;
   ds_tvg_canvas_destroy(ds.canvas);
   if (ds.font) {
     ds_tvg_font_unload("deui");

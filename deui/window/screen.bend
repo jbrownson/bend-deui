@@ -17,10 +17,20 @@ import ../scene/scene.bend as S
 #   7                        the mouse left the window
 #   8 on                     the window gained (1) or lost (0) the focus
 #
-# A frame is one list of words: each fill and label in drawing order, at
-# its place in the window. Coordinates are I32's bits, colors 0xRRGGBB.
-#   1 x y w h color          a filled rectangle
-#   2 x y size color c ... 0 a label, size pixels tall, its top left at (x, y)
+# The screen keeps a copy of the scene, set once, then changed only by the
+# scene's edits, as S.apply makes them. Both cross as words, coordinates as
+# I32's bits, colors 0xRRGGBB, positions as U32.
+#   a scene:  1 x y w h color           Fill
+#             2 x y size color c ... 0  Label, its text's code points
+#             3                         Target, which isn't drawn
+#             4 x y <scene>             Group, and its children
+#             5                         End
+#             6 <scene> <scene>         Child, first and rest
+#   an edit:  1 dx dy                   Translate
+#             2 at <scene>              Insert
+#             3 at                      Delete
+#             4 at <edit>               Update
+#             5 from dx dy              Shift
 
 # The effects
 # -----------
@@ -38,8 +48,17 @@ def screen_font(window: U32, path: String) -> IO(Result<&1, &1, U32 & String, Un
 def screen_wait(window: U32, ms: U32) -> IO(Result<&1, &1, U32 & String, List<&2, List<&2, U32>>>):
   import "./screen.c"
 
-# Draws a frame on a background of 0xRRGGBB, and shows it.
-def screen_draw(window: U32, background: U32, frame: List<&2, U32>) -> IO(Result<&1, &1, U32 & String, Unit>):
+# Sets the scene the screen keeps.
+def screen_scene(window: U32, scene: List<&2, U32>) -> IO(Result<&1, &1, U32 & String, Unit>):
+  import "./screen.c"
+
+# Applies a run of edits to the scene the screen keeps.
+def screen_edit(window: U32, edits: List<&2, U32>) -> IO(Result<&1, &1, U32 & String, Unit>):
+  import "./screen.c"
+
+# Draws the scene the screen keeps on a background of 0xRRGGBB, and shows
+# it.
+def screen_draw(window: U32, background: U32) -> IO(Result<&1, &1, U32 & String, Unit>):
   import "./screen.c"
 
 def screen_close(window: U32) -> IO(Result<&1, &1, U32 & String, Unit>):
@@ -112,8 +131,8 @@ def events(wss: List<&2, List<&2, U32>>) -> List<&2, Event>:
     case Con{ws, rest}:
       events.add(event(ws), events(rest))
 
-# Frames
-# ------
+# Scenes and edits
+# ----------------
 
 def bits(v: I.I32) -> U32:
   I.I32.to_u32(v)
@@ -126,23 +145,40 @@ def codes(t: String, rest: List<&2, U32>) -> List<&2, U32>:
     case SCon{Chr{c}, more}:
       c <> codes(more, rest)
 
-# s's words, its offsets moved by ox and oy, then rest. Targets aren't
-# drawn.
-def frame.go(s: S.Scene, +ox: I.I32, +oy: I.I32, rest: List<&2, U32>) -> List<&2, U32>:
+# A scene's words, then rest.
+def scene.words(s: S.Scene, rest: List<&2, U32>) -> List<&2, U32>:
   match s:
     case S.Fill{x, y, w, h, c}:
-      1 <> bits((ox + x : I.I32)) <> bits((oy + y : I.I32)) <> bits(w) <> bits(h) <> c <> rest
+      1 <> bits(x) <> bits(y) <> bits(w) <> bits(h) <> c <> rest
     case S.Label{x, y, z, c, t}:
-      2 <> bits((ox + x : I.I32)) <> bits((oy + y : I.I32)) <> z <> c <> codes(t, rest)
+      2 <> bits(x) <> bits(y) <> z <> c <> codes(t, rest)
     case S.Target{x, y, w, h, t}:
-      rest
+      3 <> rest
     case S.Group{x, y, cs}:
-      frame.go(cs, (ox + x : I.I32), (oy + y : I.I32), rest)
+      4 <> bits(x) <> bits(y) <> scene.words(cs, rest)
     case S.End{}:
-      rest
+      5 <> rest
     case S.Child{f, r}:
-      frame.go(f, ox, oy, frame.go(r, ox, oy, rest))
+      6 <> scene.words(f, scene.words(r, rest))
 
-# A scene as a frame's words.
-def frame(s: S.Scene) -> List<&2, U32>:
-  frame.go(s, I.I32{0}, I.I32{0}, Nil{})
+# An edit's words, then rest.
+def edit.words(e: S.Edit, rest: List<&2, U32>) -> List<&2, U32>:
+  match e:
+    case S.Translate{dx, dy}:
+      1 <> bits(dx) <> bits(dy) <> rest
+    case S.Insert{i, c}:
+      2 <> U32.from_nat(i) <> scene.words(c, rest)
+    case S.Delete{i}:
+      3 <> U32.from_nat(i) <> rest
+    case S.Update{i, d}:
+      4 <> U32.from_nat(i) <> edit.words(d, rest)
+    case S.Shift{i, dx, dy}:
+      5 <> U32.from_nat(i) <> bits(dx) <> bits(dy) <> rest
+
+# A run of edits' words.
+def edits.words(es: List<&2, S.Edit>) -> List<&2, U32>:
+  match es:
+    case Nil{}:
+      Nil{}
+    case Con{e, rest}:
+      edit.words(e, edits.words(rest))

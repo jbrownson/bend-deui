@@ -19,7 +19,7 @@ def row(+h: U32, color: U32) -> K.Row:
   K.Row{n(h), S.Group{n(0), n(0), S.chain([S.Fill{n(0), n(0), n(200), n(h), color}, S.Target{n(0), n(0), n(200), n(h), 1}])}}
 
 def rows() -> List<&2, K.Row>:
-  [row(10, 1), row(20, 2), row(30, 3)]
+  [row(10, 15158332), row(20, 3447003), row(30, 3066993)]
 
 # A click on a row deletes it: the row's position is the first step of
 # the path to its target.
@@ -34,7 +34,7 @@ def press(rows: List<&2, K.Row>, h: S.Hit) -> List<&2, L.Edit.of(K.row_edits())>
 def key.a(is_a: Bool) -> List<&2, L.Edit.of(K.row_edits())>:
   match is_a:
     case True{}:
-      [L.Insert{0n, row(5, 9)}]
+      [L.Insert{0n, row(5, 15844367)}]
     case False{}:
       Nil{}
 

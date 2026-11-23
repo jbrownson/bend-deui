@@ -91,13 +91,20 @@ every module's proofs.
 `deui/window/`, the native window, outside the proofs since it calls
 native code:
 
-- `paint.bend`: a scene as a Chromi draw list, each fill and label at its
-  offset plus its groups', later ones on top. Labels are laid out by Syllo
-  and rasterized by Dithra, in a font loaded at launch. It runs on every frame; the scene
-  itself is kept, and changes only by its edits.
-- `window.bend`: runs an app in Ankra's window, drawn on the GPU by Chromi
-  through Voltra, its labels in a TrueType font it's given the path of. Ankra's input becomes Base's events, which go through
-  the app; the view runs once, at launch.
+- `screen.bend`: the screen's effects: open a window, choose the font
+  labels are drawn in, wait for events, draw a frame, close. Events come
+  in, and frames go out, as lists of words, laid out as it says; `events`
+  reads Base's events from them, and `frame` writes a scene as one, each
+  fill and label at its offset plus its groups', later ones on top. The
+  scene itself is kept, and changes only by its edits; `frame` runs on
+  every frame.
+- `screen.c`: those effects, natively, with
+  [SDL3](https://libsdl.org) and SDL3_ttf, which lays out and draws text
+  with FreeType and HarfBuzz. They're opened with `dlopen`, as Bend links
+  no library of its own choosing.
+- `window.bend`: runs an app in a window: draws the scene on screen, waits
+  for events, and plays them through the app, until the window closes.
+  The view runs once, at launch.
 
 `examples/`:
 
@@ -111,9 +118,6 @@ native code:
 - `rows.bend`: an app. A column of rows: clicking a row deletes it, and
   "a" adds one at the top. It plays clicks and a key, then prints the
   heights left and whether the scene on screen is the view of the rows.
-- `rows_pixels.bend`: the rows app's scene after its events, drawn on the
-  CPU as the window draws it on the GPU, checked against drawing the rows
-  again.
 - `rows_window.bend`: the rows app in a window.
 - `todo.bend`: a to-do list. Click an item's box to tick it and its x to
   delete it; Return starts a new item at the top, typing writes into it,
@@ -164,10 +168,10 @@ hash, so `bend` fetches exactly that code on first use and checks it:
 - `bend-kit-int` (`0x4eed9d7a…`), the `I32` used for coordinates.
 - `bend-mathlib` 0.8.1.1 (`0x15432fae…`), lemmas about Nat and U32.
 
-The [AMAGE](https://github.com/amage-si) libraries, copied into
-`vendor/amage/` at the commits its README lists, with one patch it
-describes: Ankra (the window and its events), Voltra (Vulkan), Chromi
-(draw lists), and Runika, Syllo, Dithra and Splina (text). Ankra and Voltra each include a native bridge in C.
+For the windows, [SDL3](https://libsdl.org) and
+[SDL3_ttf](https://github.com/libsdl-org/SDL_ttf), installed on the system
+(`pacman -S sdl3 sdl3_ttf` on Arch): their headers to build, and
+`libSDL3.so.0` and `libSDL3_ttf.so.0` to run.
 
 ## Running
 
@@ -178,7 +182,6 @@ bend examples/lists.bend      # computes a mapped list's edits
 bend examples/scene.bend      # edits a column of rows
 bend examples/column.bend     # patches a column, and draws it again
 bend examples/rows.bend                       # plays events through an app
-bend examples/rows_pixels.bend -o px && ./px # draws the app on the CPU
 bend examples/rows_window.bend -o win && ./win  # the app in a window
 bend examples/todo.bend                       # plays events through the to-do list
 bend examples/todo_window.bend -o todo && ./todo  # the to-do list in a window
@@ -190,14 +193,12 @@ kernel, which has its own proof in Lean, and confirms nothing relies on
 `@unsafe` or foreign code. It needs Lean 4.34.0 (the elan toolchain
 `leanprover/lean4:v4.34.0`) to build the kernel on first use.
 
-Windows only open from a native build. They open an X11 window, directly
-or through XWayland, and draw with Vulkan. That needs Linux, clang, the
-X11 and XRandR headers (`clang libx11-dev libxrandr-dev` on
-Debian/Ubuntu), a Vulkan 1.3 driver, and a desktop session so `$DISPLAY`
-is set. Sizes and positions are physical pixels.
+Windows only open from a native build, through SDL3, which runs on
+Wayland or X11. Sizes and positions are in the window's coordinates,
+which SDL scales on a high-density display.
 
-Tested with Bend 2.0.40. The to-do list's window has been run under Xvfb
-with Mesa's software Vulkan driver (lavapipe), driven by xdotool: clicks,
-Return, typing and Backspace. The window examples look for Liberation Sans
-at `/usr/share/fonts/liberation/LiberationSans-Regular.ttf`; without it,
-labels are left out.
+Tested with Bend 2.0.40, SDL 3.4.20 and SDL3_ttf 3.2.2. The windows have
+been run here only under Xvfb (X11), driven by xdotool: clicks, Return,
+typing and Backspace. The window examples look for Liberation Sans at
+`/usr/share/fonts/liberation/LiberationSans-Regular.ttf` (`ttf-liberation`
+on Arch); without it, labels are left out, and the window says why.

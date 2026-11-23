@@ -2,59 +2,11 @@ import Base
 import ../change/change.bend as C
 import ../scene/scene.bend as S
 import ../app/app.bend as D
-import ./paint.bend as P
-import ../../vendor/amage/Ankra/window.bend as A
-import ../../vendor/amage/Ankra/app.bend as Loop
-import ../../vendor/amage/Chromi/scene.bend as Sc
-import ../../vendor/amage/Chromi/gpu.bend as Gpu
-import ../../vendor/amage/Voltra/gpu.bend as V
-import ../../vendor/amage/Runika/font.bend as F
+import ./screen.bend as W
 
-# An app in a native window: Ankra's window and events, the scene on screen
-# drawn on the GPU as a Chromi draw list, which Voltra draws and presents,
-# its labels in a font loaded at launch.
-# Events go through the app as its step says; the view runs once, at
-# launch, and each frame draws the scene kept between events.
-
-# Events
-# ------
-
-# Ankra's input as Base's event, where Base has one. The mouse is pointer
-# 0; Ankra gives no times, so they're 0.
-def event(i: A.Input) -> Maybe<&2, Event>:
-  match i:
-    case A.PointerDown{x, y, b, m}:
-      Some{Press{0, Tool.Mouse{}, x, y, 0, b, True{}}}
-    case A.PointerUp{x, y, b, m}:
-      Some{Press{0, Tool.Mouse{}, x, y, 0, b, False{}}}
-    case A.PointerMoved{x, y}:
-      Some{Move{0, Tool.Mouse{}, x, y, 0}}
-    case A.KeyDown{c, r, m}:
-      Some{Key{c, True{}}}
-    case A.KeyUp{c, m}:
-      Some{Key{c, False{}}}
-    case A.TextTyped{t}:
-      Some{Text{t}}
-    case A.Wheel{x, y, dx, dy}:
-      Some{Scroll{x, y, dx, dy}}
-    case A.CloseRequested{}:
-      Some{Close{}}
-    case i:
-      None{}
-
-def events.add(m: Maybe<&2, Event>, rest: List<&2, Event>) -> List<&2, Event>:
-  match m:
-    case Some{e}:
-      Con{e, rest}
-    case None{}:
-      rest
-
-def events(ins: List<&2, A.Input>) -> List<&2, Event>:
-  match ins:
-    case Nil{}:
-      Nil{}
-    case Con{i, rest}:
-      events.add(event(i), events(rest))
+# An app in a native window: the screen's events go through the app as its
+# step says, and each frame draws the scene kept between events. The view
+# runs once, at launch.
 
 # Whether the events ask the window to close.
 def closing(es: List<&2, Event>) -> Bool:
@@ -68,75 +20,31 @@ def closing(es: List<&2, Event>) -> Bool:
         case e:
           closing(rest)
 
-# The loop
-# --------
-
-def resized(m: Maybe<&2, A.Size>, +r: Gpu.Renderer) -> IO(Gpu.Renderer):
-  match m:
-    case None{}:
-      IO.pure(Gpu.Renderer, r)
-    case Some{A.Size{w, h}}:
-      Gpu.resize(r, w, h)
-
-# The app's answer to a batch: the model after its events, drawn again, or
-# stopping when the window closes.
-def next(-cs: C.EditStructure, -view: C.Cached<C.runs(~cs), C.runs(~S.edit_structure())>, close: Bool, r: Gpu.Renderer, font: Maybe<&2, F.Font>, m: D.Model<cs, view>) -> Loop.Step<(D.Model<cs, view> & Gpu.Renderer & Maybe<&2, F.Font>)>:
-  match close:
-    case True{}:
-      Loop.Stop{(m, r, font)}
-    case False{}:
-      Loop.Redraw{(m, r, font)}
-
-def update(~cs: C.EditStructure, ~view: C.Cached<C.runs(~cs), C.runs(~S.edit_structure())>,
-  ~press: C.Value(cs) -> S.Hit -> List<&2, C.Edit(cs)>, ~key: C.Value(cs) -> U32 -> List<&2, C.Edit(cs)>, ~text: C.Value(cs) -> String -> List<&2, C.Edit(cs)>,
-  win: A.Win, batch: List<&2, A.Input>, st: D.Model<cs, view> & Gpu.Renderer & Maybe<&2, F.Font>) -> IO(Loop.Step<(D.Model<cs, view> & Gpu.Renderer & Maybe<&2, F.Font>)>):
-  (m, r, font) = st
-  +ins = batch
-  +es = events(ins)
-  do IO<Loop.Step<(D.Model<cs, view> & Gpu.Renderer & Maybe<&2, F.Font>)>>:
-    +r1 : Gpu.Renderer <- resized(A.resized(ins, None{}), r)
-    return next(cs, view, closing(es), r1, font, D.play(~cs, ~view, ~press, ~key, ~text, es, m))
-
-# Another frame is owed when the swapchain was rebuilt while presenting.
-def drawn(-cs: C.EditStructure, -view: C.Cached<C.runs(~cs), C.runs(~S.edit_structure())>, pending: Bool, r: Gpu.Renderer, font: Maybe<&2, F.Font>, m: D.Model<cs, view>) -> Loop.Step<(D.Model<cs, view> & Gpu.Renderer & Maybe<&2, F.Font>)>:
-  match pending:
-    case True{}:
-      Loop.Redraw{(m, r, font)}
-    case False{}:
-      Loop.Keep{(m, r, font)}
-
-# The frame for a target of the given size.
-def sized(s: S.Scene, +font: Maybe<&2, F.Font>, size: V.Size, +bg: U32) -> Sc.Scene:
-  V.Size{w, h} = size
-  P.frame(s, font, w, h, bg)
-
-def draw.go(~cs: C.EditStructure, ~view: C.Cached<C.runs(~cs), C.runs(~S.edit_structure())>, ~bg: U32, +m: D.Model<cs, view>, +r: Gpu.Renderer, +font: Maybe<&2, F.Font>) ->
-  IO(Loop.Step<(D.Model<cs, view> & Gpu.Renderer & Maybe<&2, F.Font>)>):
-  do IO<Loop.Step<(D.Model<cs, view> & Gpu.Renderer & Maybe<&2, F.Font>)>>:
-    +r1 : Gpu.Renderer <- Gpu.draw(r, sized(D.scene(cs, view, m), font, Gpu.target_size(r), bg))
-    return drawn(cs, view, Gpu.pending(r1), r1, font, m)
-
-def draw(~cs: C.EditStructure, ~view: C.Cached<C.runs(~cs), C.runs(~S.edit_structure())>, ~bg: U32, win: A.Win, st: D.Model<cs, view> & Gpu.Renderer & Maybe<&2, F.Font>) ->
-  IO(Loop.Step<(D.Model<cs, view> & Gpu.Renderer & Maybe<&2, F.Font>)>):
-  (m, r, font) = st
-  draw.go(~cs, ~view, ~bg, m, r, font)
-
-# The GPU objects go before the window they were made from.
-def finish(-cs: C.EditStructure, -view: C.Cached<C.runs(~cs), C.runs(~S.edit_structure())>, end: A.Win & D.Model<cs, view> & Gpu.Renderer & Maybe<&2, F.Font>) -> IO(Unit):
-  (win, m, r, font) = end
-  do IO<Unit>:
-    +report : V.Report <- Gpu.close(r)
-    Unit <- IO.print(V.report.show(report))
-    +left : U32 <- A.close(win)
-    return Unit{}
-
-# A font that loaded, or none: labels are left out without one.
-def loaded(r: Result<&2, &2, String, F.Font>) -> Maybe<&2, F.Font>:
+# Says why labels are left out, if the font didn't open.
+def font_note(r: Result<&1, &1, U32 & String, Unit>) -> IO(Unit):
   match r:
-    case Done{f}:
-      Some{f}
-    case Fail{e}:
-      None{}
+    case Done{u}:
+      IO.pure(Unit, Unit{})
+    case Fail{(code, message)}:
+      IO.print(String.concat(["no font, so labels are left out: ", message, "\n"]))
+
+# Draws the scene on screen, waits for events, and plays them through the
+# app, until the window closes, or after fuel turns: Bend requires every
+# loop to end.
+def loop(~cs: C.EditStructure, ~view: C.Cached<C.runs(~cs), C.runs(~S.edit_structure())>,
+  ~press: C.Value(cs) -> S.Hit -> List<&2, C.Edit(cs)>, ~key: C.Value(cs) -> U32 -> List<&2, C.Edit(cs)>, ~text: C.Value(cs) -> String -> List<&2, C.Edit(cs)>,
+  ~bg: U32, fuel: Nat, close: Bool, +win: U32, +m: D.Model<cs, view>) -> IO(Unit):
+  match fuel close:
+    case _ True{}:
+      IO.pure(Unit, Unit{})
+    case 0n False{}:
+      IO.pure(Unit, Unit{})
+    case 1n+p False{}:
+      do IO<Unit>:
+        Unit <- IO.try(Unit, W.screen_draw(win, bg, W.frame(D.scene(cs, view, m))))
+        wss : List<&2, List<&2, U32>> <- IO.try(List<&2, List<&2, U32>>, W.screen_wait(win, 4294967295))
+        +es : List<&2, Event> = W.events(wss)
+        loop(~cs, ~view, ~press, ~key, ~text, ~bg, p, closing(es), win, D.play(~cs, ~view, ~press, ~key, ~text, es, m))
 
 # Runs an app in a window of the given size on a background of `bg`
 # (0xRRGGBB), its labels in the TrueType font at font_path, from `state`,
@@ -145,11 +53,8 @@ def run(~cs: C.EditStructure, ~view: C.Cached<C.runs(~cs), C.runs(~S.edit_struct
   ~press: C.Value(cs) -> S.Hit -> List<&2, C.Edit(cs)>, ~key: C.Value(cs) -> U32 -> List<&2, C.Edit(cs)>, ~text: C.Value(cs) -> String -> List<&2, C.Edit(cs)>,
   ~bg: U32, title: String, font_path: String, +width: U32, +height: U32, +state: C.Value(cs)) -> IO(Unit):
   do IO<Unit>:
-    font : Result<&2, &2, String, F.Font> <- F.load(font_path)
-    +win : A.Win <- IO.try(A.Win, A.open(A.options(title, width, height)))
-    +native : List<&2, U32> <- A.native(win)
-    +r : Gpu.Renderer <- Gpu.open(native, width, height, True{})
-    end : A.Win & D.Model<cs, view> & Gpu.Renderer & Maybe<&2, F.Font> <- Loop.run(~(D.Model<cs, view> & Gpu.Renderer & Maybe<&2, F.Font>),
-      ~(w => b => st => update(~cs, ~view, ~press, ~key, ~text, w, b, st)),
-      ~(w => st => draw(~cs, ~view, ~bg, w, st)), win, (D.start(~cs, ~view, state), r, loaded(font)))
-    finish(cs, view, end)
+    +win : U32 <- IO.try(U32, W.screen_open(title, width, height))
+    r : Result<&1, &1, U32 & String, Unit> <- W.screen_font(win, font_path)
+    Unit <- font_note(r)
+    Unit <- loop(~cs, ~view, ~press, ~key, ~text, ~bg, 4294967295n, False{}, win, D.start(~cs, ~view, state))
+    IO.try(Unit, W.screen_close(win))

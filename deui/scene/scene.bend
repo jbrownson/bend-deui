@@ -2,25 +2,27 @@ import Base
 import 0x4eed9d7ac6ece61523d747a9d804e4f0/int.bend as I
 import ../change/change.bend as C
 
-# What's on the screen: a tree of fills, targets and groups, each placed
-# at an offset from the group it's in, so moving anything, however much is
-# in it, is one edit. A target is where a pointer lands: a rectangle with a
-# tag, which says what it is to the app's handler. A group's children are a chain of the same type, End or
-# Child{first, rest}, so one function walks scenes and their children
-# alike: Bend has no mutual recursion.
+# What's on the screen: a tree of fills, labels, targets and groups, each
+# placed at an offset from the group it's in, so moving anything, however
+# much is in it, is one edit. A label is a line of text, size pixels tall.
+# A target is where a pointer lands: a rectangle with a tag, which says what
+# it is to the app's handler. A group's children are a chain of the same
+# type, End or Child{first, rest}, so one function walks scenes and their
+# children alike: Bend has no mutual recursion.
 type Scene is Data:
   Fill{x: I.I32, y: I.I32, w: I.I32, h: I.I32, color: U32}
+  Label{x: I.I32, y: I.I32, size: U32, color: U32, text: String}
   Target{x: I.I32, y: I.I32, w: I.I32, h: I.I32, tag: U32}
   Group{x: I.I32, y: I.I32, children: Scene}
   End{}
   Child{first: Scene, rest: Scene}
 
-# A scene's own edits. Translate moves a fill, a target or a group. Insert, Delete,
-# Update and Shift act on a group's children by position, counting from 0:
-# Update applies an edit to the child at a position, and Shift translates
-# every child from a position on, so a column takes a change in one edit
-# rather than one for each child below it. An edit that doesn't fit what
-# it meets leaves it as it is.
+# A scene's own edits. Translate moves a fill, a label, a target or a
+# group. Insert, Delete, Update and Shift act on a group's children by
+# position, counting from 0: Update applies an edit to the child at a
+# position, and Shift translates every child from a position on, so a
+# column takes a change in one edit rather than one for each child below
+# it. An edit that doesn't fit what it meets leaves it as it is.
 type Edit is Data:
   Translate{dx: I.I32, dy: I.I32}
   Insert{at: Nat, child: Scene}
@@ -34,6 +36,8 @@ def apply(s: Scene, e: Edit) -> Scene:
   match s e:
     case Fill{x, y, w, h, c} Translate{dx, dy}:
       Fill{(x + dx : I.I32), (y + dy : I.I32), w, h, c}
+    case Label{x, y, z, c, t} Translate{dx, dy}:
+      Label{(x + dx : I.I32), (y + dy : I.I32), z, c, t}
     case Target{x, y, w, h, t} Translate{dx, dy}:
       Target{(x + dx : I.I32), (y + dy : I.I32), w, h, t}
     case Group{x, y, cs} Translate{dx, dy}:
@@ -125,6 +129,8 @@ def hit.under(i: Nat, m: Maybe<&2, Hit>) -> Maybe<&2, Hit>:
 def hit(s: Scene, +i: Nat, +px: I.I32, +py: I.I32) -> Maybe<&2, Hit>:
   match s:
     case Fill{x, y, w, h, c}:
+      None{}
+    case Label{x, y, z, c, t}:
       None{}
     case Target{x, y, w, h, t}:
       hit.target(Bool.and(within(x, w, px), within(y, h, py)), t)

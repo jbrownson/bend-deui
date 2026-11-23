@@ -19,7 +19,8 @@ def shifted(xs: List<&2, S.Scene>, i: Nat, +dx: I.I32, +dy: I.I32) -> List<&2, S
 
 # Moving
 # ------
-# A fill, a target or a group sits at an offset from the group it's in.
+# A fill, a label, a target or a group sits at an offset from the group
+# it's in.
 
 # LAW: translating a fill moves it.
 law translate_fill:
@@ -31,6 +32,17 @@ law translate_fill:
   for dx: I.I32
   for dy: I.I32
   {S.apply(S.Fill{x, y, w, h, c}, S.Translate{dx, dy}) == S.Fill{(x + dx : I.I32), (y + dy : I.I32), w, h, c} : S.Scene}
+
+# LAW: translating a label moves it.
+law translate_label:
+  for x: I.I32
+  for y: I.I32
+  for z: U32
+  for c: U32
+  for t: String
+  for dx: I.I32
+  for dy: I.I32
+  {S.apply(S.Label{x, y, z, c, t}, S.Translate{dx, dy}) == S.Label{(x + dx : I.I32), (y + dy : I.I32), z, c, t} : S.Scene}
 
 # LAW: translating a target moves it.
 law translate_target:
@@ -120,6 +132,18 @@ law hit_fill:
   for +px: I.I32
   for +py: I.I32
   {S.hit(S.Fill{x, y, w, h, c}, i, px, py) == None{} : Maybe<&2, S.Hit>}
+
+# LAW: a label is never hit: a target over it is what a pointer finds.
+law hit_label:
+  for x: I.I32
+  for y: I.I32
+  for z: U32
+  for c: U32
+  for t: String
+  for +i: Nat
+  for +px: I.I32
+  for +py: I.I32
+  {S.hit(S.Label{x, y, z, c, t}, i, px, py) == None{} : Maybe<&2, S.Hit>}
 
 # LAW: a target is hit where the point is inside it, from its left and top
 # edges up to but not including its right and bottom ones.

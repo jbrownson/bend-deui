@@ -85,6 +85,9 @@ def chain_shift(xs, i, dx, dy):
 def Laws.translate_fill(x, y, w, h, c, dx, dy):
   {==}
 
+def Laws.translate_label(x, y, z, c, t, dx, dy):
+  {==}
+
 def Laws.translate_target(x, y, w, h, t, dx, dy):
   {==}
 
@@ -120,6 +123,9 @@ def Laws.edit_structure():
 # -------
 
 def Laws.hit_fill(x, y, w, h, c, i, px, py):
+  {==}
+
+def Laws.hit_label(x, y, z, c, t, i, px, py):
   {==}
 
 def Laws.hit_target(x, y, w, h, t, i, px, py):

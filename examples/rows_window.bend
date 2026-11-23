@@ -6,4 +6,4 @@ import ./rows.bend as R
 # The rows app in a window: click a row to delete it, press "a" to add one
 # at the top. Build it natively: bend examples/rows_window.bend -o rows && ./rows
 def main() -> IO(Unit):
-  W.run(~K.rows_edits(), ~K.inc(), ~R.press, ~R.key, ~2106408, "deui rows", 400, 300, R.rows())
+  W.run(~K.rows_edits(), ~K.inc(), ~R.press, ~R.key, ~2106408, "deui rows", "/usr/share/fonts/liberation/LiberationSans-Regular.ttf", 400, 300, R.rows())

@@ -3,9 +3,15 @@ import 0x4eed9d7ac6ece61523d747a9d804e4f0/int.bend as I
 import ../scene/scene.bend as S
 import ../../vendor/amage/Chromi/scene.bend as Sc
 import ../../vendor/amage/Chromi/geometry.bend as CG
+import ../../vendor/amage/Runika/font.bend as F
+import ../../vendor/amage/Syllo/main.bend as Sy
+import ../../vendor/amage/Dithra/main.bend as D
+import ../../vendor/amage/Dithra/raster.bend as DR
 
-# A scene as a Chromi draw list: each fill, at its offset plus its groups',
-# in order, so what's drawn later is on top. Targets aren't drawn. This is
+# A scene as a Chromi draw list: each fill and label, at its offset plus
+# its groups', in order, so what's drawn later is on top. Targets aren't
+# drawn. Labels are laid out and rasterized here, in the font given; with
+# none, they're left out. This is
 # the part of drawing that runs on every frame; the scene itself is kept,
 # and only changes by its edits.
 
@@ -17,20 +23,63 @@ def float(v: I.I32) -> F32:
 def rgba(+rgb: U32) -> U32:
   ((rgb << 8n) .|. 255 : U32)
 
+# Text
+# ----
+
+# One glyph's coverage, inked at its place from the label's top left.
+def glyph(m: D.PositionedMask, out: Sc.Scene, +x: F32, +top: F32, +color: U32) -> Sc.Scene:
+  D.PositionedMask{dx, dy, start, end, DR.Mask{w, h, left, otop, adv, data}} = m
+  Sc.blit_mask(out, 0, (x + dx : F32), (top + dy : F32), w, h, data, color)
+
+def glyphs(ms: List<&2, D.PositionedMask>, out: Sc.Scene, +x: F32, +top: F32, +color: U32) -> Sc.Scene:
+  match ms:
+    case Nil{}:
+      out
+    case Con{m, rest}:
+      glyphs(rest, glyph(m, out, x, top, color), x, top, color)
+
+def masked(r: Result<&2, &2, String, List<&2, D.PositionedMask>>, out: Sc.Scene, +x: F32, +top: F32, +color: U32) -> Sc.Scene:
+  match r:
+    case Done{ms}:
+      glyphs(ms, out, x, top, color)
+    case Fail{e}:
+      Sc.reject(out, e)
+
+def laid(+font: F.Font, r: Result<&2, &2, String, Sy.Layout>, +size: F32, out: Sc.Scene, +x: F32, +top: F32, +color: U32) -> Sc.Scene:
+  match r:
+    case Done{+layout}:
+      masked(D.render(font, layout, size, 1.0), out, x, top, color)
+    case Fail{e}:
+      Sc.reject(out, e)
+
+# A label, in the font if there is one.
+def label(font: Maybe<&2, F.Font>, text: String, +size: F32, out: Sc.Scene, +x: F32, +top: F32, +color: U32) -> Sc.Scene:
+  match font:
+    case Some{+f}:
+      laid(f, Sy.layout(f, text, size, 100000.0), size, out, x, top, color)
+    case None{}:
+      out
+
+# The scene
+# ---------
+
 # s drawn onto out, its offsets moved by ox and oy.
-def paint(s: S.Scene, +ox: I.I32, +oy: I.I32, out: Sc.Scene) -> Sc.Scene:
+def paint(s: S.Scene, +font: Maybe<&2, F.Font>, +ox: I.I32, +oy: I.I32, out: Sc.Scene) -> Sc.Scene:
   match s:
     case S.Fill{x, y, w, h, c}:
       Sc.fill_rect(out, CG.Rect{float((ox + x : I.I32)), float((oy + y : I.I32)), float(w), float(h)}, rgba(c))
+    case S.Label{x, y, z, c, t}:
+      label(font, t, U32.to_f32(z), out, float((ox + x : I.I32)), float((oy + y : I.I32)), rgba(c))
     case S.Target{x, y, w, h, t}:
       out
     case S.Group{x, y, cs}:
-      paint(cs, (ox + x : I.I32), (oy + y : I.I32), out)
+      paint(cs, font, (ox + x : I.I32), (oy + y : I.I32), out)
     case S.End{}:
       out
     case S.Child{f, r}:
-      paint(r, ox, oy, paint(f, ox, oy, out))
+      paint(r, font, ox, oy, paint(f, font, ox, oy, out))
 
-# A frame: the scene on a background of `bg` (0xRRGGBB), width by height.
-def frame(s: S.Scene, +width: U32, +height: U32, +bg: U32) -> Sc.Scene:
-  paint(s, I.I32{0}, I.I32{0}, Sc.new(width, height, 1.0, rgba(bg)))
+# A frame: the scene on a background of `bg` (0xRRGGBB), width by height,
+# its labels in the font if there is one.
+def frame(s: S.Scene, +font: Maybe<&2, F.Font>, +width: U32, +height: U32, +bg: U32) -> Sc.Scene:
+  paint(s, font, I.I32{0}, I.I32{0}, Sc.new(width, height, 1.0, rgba(bg)))

@@ -45,8 +45,8 @@ every module's proofs.
   `diff` gets there, what `dmap` returns for each edit, that `map.inc(g)` is
   correct when `g` is, that `dmap` acts exactly where the edits act, and
   that it turns valid edits into valid ones.
-- `scene/`: what's on the screen. A scene is a tree of fills, targets and
-  groups,
+- `scene/`: what's on the screen. A scene is a tree of fills, labels
+  (lines of text), targets and groups,
   each at an offset from the group it's in, so moving anything is one
   edit (`Translate`). A group's children are edited by position, as a list
   is (`Insert`, `Delete`, `Update`), and `Shift` translates every child
@@ -78,11 +78,12 @@ every module's proofs.
 `deui/window/`, the native window, outside the proofs since it calls
 native code:
 
-- `paint.bend`: a scene as a Chromi draw list, each fill at its offset
-  plus its groups', later ones on top. It runs on every frame; the scene
+- `paint.bend`: a scene as a Chromi draw list, each fill and label at its
+  offset plus its groups', later ones on top. Labels are laid out by Syllo
+  and rasterized by Dithra, in a font loaded at launch. It runs on every frame; the scene
   itself is kept, and changes only by its edits.
 - `window.bend`: runs an app in Ankra's window, drawn on the GPU by Chromi
-  through Voltra. Ankra's input becomes Base's events, which go through
+  through Voltra, its labels in a TrueType font it's given the path of. Ankra's input becomes Base's events, which go through
   the app; the view runs once, at launch.
 
 `examples/`:
@@ -124,8 +125,7 @@ hash, so `bend` fetches exactly that code on first use and checks it:
 The [AMAGE](https://github.com/amage-si) libraries, copied into
 `vendor/amage/` at the commits its README lists, with one patch it
 describes: Ankra (the window and its events), Voltra (Vulkan), Chromi
-(draw lists), and Runika, Syllo, Dithra and Splina (text, which nothing
-here uses yet). Ankra and Voltra each include a native bridge in C.
+(draw lists), and Runika, Syllo, Dithra and Splina (text). Ankra and Voltra each include a native bridge in C.
 
 ## Running
 

@@ -61,6 +61,8 @@ def same(a: S.Scene, b: S.Scene) -> Bool:
   match a b:
     case S.Fill{x, y, w, h, c} S.Fill{x2, y2, w2, h2, c2}:
       Bool.and(Bool.and(Bool.and(I.I32.is_eq(x, x2), I.I32.is_eq(y, y2)), Bool.and(I.I32.is_eq(w, w2), I.I32.is_eq(h, h2))), U32.is_eq(c, c2))
+    case S.Label{x, y, z, c, t} S.Label{x2, y2, z2, c2, t2}:
+      Bool.and(Bool.and(Bool.and(I.I32.is_eq(x, x2), I.I32.is_eq(y, y2)), Bool.and(U32.is_eq(z, z2), U32.is_eq(c, c2))), String.eq(t, t2))
     case S.Target{x, y, w, h, t} S.Target{x2, y2, w2, h2, t2}:
       Bool.and(Bool.and(Bool.and(I.I32.is_eq(x, x2), I.I32.is_eq(y, y2)), Bool.and(I.I32.is_eq(w, w2), I.I32.is_eq(h, h2))), U32.is_eq(t, t2))
     case S.Group{x, y, cs} S.Group{x2, y2, cs2}:

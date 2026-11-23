@@ -106,6 +106,13 @@ native code:
   CPU as the window draws it on the GPU, checked against drawing the rows
   again.
 - `rows_window.bend`: the rows app in a window.
+- `todo.bend`: a to-do list. Click an item's box to tick it and its x to
+  delete it; Return starts a new item at the top, typing writes into it,
+  and Backspace takes a letter back. Its view is an item's row mapped over
+  the list (`map.inc`), then the column (`compose`), so its derivative's
+  law follows from theirs in one line (`view_ok`). It plays events and
+  prints the items left and whether the scene on screen is their view.
+- `todo_window.bend`: the to-do list in a window.
 
 `change/` and `list/` began in bend-puri, as its `ilc/`, at `7b711ea`; their
 history is there.
@@ -141,6 +148,8 @@ bend examples/column.bend     # patches a column, and draws it again
 bend examples/rows.bend -o rows && ./rows   # plays events through an app
 bend examples/rows_pixels.bend -o px && ./px # draws the app on the CPU
 bend examples/rows_window.bend -o win && ./win  # the app in a window
+bend examples/todo.bend -o todo && ./todo   # plays events through the to-do list
+bend examples/todo_window.bend -o todo && ./todo  # the to-do list in a window
 ```
 
 `bend <file> --verdict` checks a proof a second time with Bend's BendTT
@@ -154,5 +163,7 @@ X11 and XRandR headers (`clang libx11-dev libxrandr-dev` on
 Debian/Ubuntu), a Vulkan 1.3 driver, and a desktop session so `$DISPLAY`
 is set. Sizes and positions are physical pixels.
 
-Tested with Bend 2.0.40. The window example checks, but hasn't been run:
-it was written where there's no display.
+Tested with Bend 2.0.40. The window examples check, but haven't been run:
+they were written where there's no display. They look for Liberation Sans
+at `/usr/share/fonts/liberation/LiberationSans-Regular.ttf`; without it,
+labels are left out.

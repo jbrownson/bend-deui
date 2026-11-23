@@ -26,37 +26,43 @@ def rgba(+rgb: U32) -> U32:
 # Text
 # ----
 
-# One glyph's coverage, inked at its place from the label's top left.
-def glyph(m: D.PositionedMask, out: Sc.Scene, +x: F32, +top: F32, +color: U32) -> Sc.Scene:
-  D.PositionedMask{dx, dy, start, end, DR.Mask{w, h, left, otop, adv, data}} = m
-  Sc.blit_mask(out, 0, (x + dx : F32), (top + dy : F32), w, h, data, color)
+# A glyph's key in the GPU's atlas, which keeps one mask per key: its id
+# in the font and its size, so each glyph at each size has its own.
+def glyph.key(+gid: U32, +size: U32) -> U32:
+  (((gid * 512 : U32) + size : U32) + 1 : U32)
 
-def glyphs(ms: List<&2, D.PositionedMask>, out: Sc.Scene, +x: F32, +top: F32, +color: U32) -> Sc.Scene:
-  match ms:
+# One glyph's coverage, inked at its place from the label's top left.
+def glyph(m: D.PositionedMask, out: Sc.Scene, +key: U32, +x: F32, +top: F32, +color: U32) -> Sc.Scene:
+  D.PositionedMask{dx, dy, start, end, DR.Mask{w, h, left, otop, adv, data}} = m
+  Sc.blit_mask(out, key, (x + dx : F32), (top + dy : F32), w, h, data, color)
+
+def rasterized(r: Result<&2, &2, String, DR.Mask>, out: Sc.Scene, +key: U32, gx: F32, gy: F32, +x: F32, +top: F32, +color: U32) -> Sc.Scene:
+  match r:
+    case Done{m}:
+      glyph(D.position(m, gx, gy, 0, 0), out, key, x, top, color)
+    case Fail{e}:
+      Sc.reject(out, e)
+
+# A label's glyphs, each rasterized at its place in the layout.
+def glyphs(ps: List<&2, Sy.Placement>, +font: F.Font, +size: U32, out: Sc.Scene, +x: F32, +top: F32, +color: U32) -> Sc.Scene:
+  match ps:
     case Nil{}:
       out
-    case Con{m, rest}:
-      glyphs(rest, glyph(m, out, x, top, color), x, top, color)
+    case Con{Sy.Placement{+gid, start, end, gx, base, adv, line}, rest}:
+      glyphs(rest, font, size, rasterized(D.glyph(font, gid, U32.to_f32(size)), out, glyph.key(gid, size), gx, base, x, top, color), x, top, color)
 
-def masked(r: Result<&2, &2, String, List<&2, D.PositionedMask>>, out: Sc.Scene, +x: F32, +top: F32, +color: U32) -> Sc.Scene:
+def laid(+font: F.Font, r: Result<&2, &2, String, Sy.Layout>, +size: U32, out: Sc.Scene, +x: F32, +top: F32, +color: U32) -> Sc.Scene:
   match r:
-    case Done{ms}:
-      glyphs(ms, out, x, top, color)
+    case Done{Sy.Layout{ps, width, height, asc, desc, lh, lines}}:
+      glyphs(ps, font, size, out, x, top, color)
     case Fail{e}:
       Sc.reject(out, e)
 
-def laid(+font: F.Font, r: Result<&2, &2, String, Sy.Layout>, +size: F32, out: Sc.Scene, +x: F32, +top: F32, +color: U32) -> Sc.Scene:
-  match r:
-    case Done{+layout}:
-      masked(D.render(font, layout, size, 1.0), out, x, top, color)
-    case Fail{e}:
-      Sc.reject(out, e)
-
-# A label, in the font if there is one.
-def label(font: Maybe<&2, F.Font>, text: String, +size: F32, out: Sc.Scene, +x: F32, +top: F32, +color: U32) -> Sc.Scene:
+# A label, size pixels tall, in the font if there is one.
+def label(font: Maybe<&2, F.Font>, text: String, +size: U32, out: Sc.Scene, +x: F32, +top: F32, +color: U32) -> Sc.Scene:
   match font:
     case Some{+f}:
-      laid(f, Sy.layout(f, text, size, 100000.0), size, out, x, top, color)
+      laid(f, Sy.layout(f, text, U32.to_f32(size), 100000.0), size, out, x, top, color)
     case None{}:
       out
 
@@ -69,7 +75,7 @@ def paint(s: S.Scene, +font: Maybe<&2, F.Font>, +ox: I.I32, +oy: I.I32, out: Sc.
     case S.Fill{x, y, w, h, c}:
       Sc.fill_rect(out, CG.Rect{float((ox + x : I.I32)), float((oy + y : I.I32)), float(w), float(h)}, rgba(c))
     case S.Label{x, y, z, c, t}:
-      label(font, t, U32.to_f32(z), out, float((ox + x : I.I32)), float((oy + y : I.I32)), rgba(c))
+      label(font, t, z, out, float((ox + x : I.I32)), float((oy + y : I.I32)), rgba(c))
     case S.Target{x, y, w, h, t}:
       out
     case S.Group{x, y, cs}:

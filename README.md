@@ -197,7 +197,8 @@ X11 and XRandR headers (`clang libx11-dev libxrandr-dev` on
 Debian/Ubuntu), a Vulkan 1.3 driver, and a desktop session so `$DISPLAY`
 is set. Sizes and positions are physical pixels.
 
-Tested with Bend 2.0.40. The window examples check, but haven't been run:
-they were written where there's no display. They look for Liberation Sans
+Tested with Bend 2.0.40. The to-do list's window has been run under Xvfb
+with Mesa's software Vulkan driver (lavapipe), driven by xdotool: clicks,
+Return, typing and Backspace. The window examples look for Liberation Sans
 at `/usr/share/fonts/liberation/LiberationSans-Regular.ttf`; without it,
 labels are left out.

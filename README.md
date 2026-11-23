@@ -42,12 +42,24 @@ every module's proofs.
   `diff` gets there, what `dmap` returns for each edit, that `map.inc(g)` is
   correct when `g` is, that `dmap` acts exactly where the edits act, and
   that it turns valid edits into valid ones.
+- `scene/`: what's on the screen. A scene is a tree of fills and groups,
+  each at an offset from the group it's in, so moving anything is one
+  edit (`Translate`). A group's children are edited by position, as a list
+  is (`Insert`, `Delete`, `Update`), and `Shift` translates every child
+  from a position on, so a column takes a change in one edit rather than
+  one for each child below it. A group's children are a chain of the same
+  type, built from a list by `chain`, because Bend has no mutual recursion.
+  The laws say what each edit does, and that a group's children change
+  exactly as the list they're made from would. Coordinates are
+  bend-kit-int's `I32`.
 
 `examples/`:
 
 - `lists.bend`: `dmap` on concrete lists of numbers: the edits that mapping
   makes, checked against mapping from scratch, a map over lists of lists,
   and `diff`'s run between two lists.
+- `scene.bend`: a column of rows; a row inserted second, then one `Shift`
+  moves the rows below it.
 
 `change/` and `list/` began in bend-puri, as its `ilc/`, at `7b711ea`; their
 history is there.
@@ -59,12 +71,19 @@ library built on incremental computation, and his
 from the theory in Cai, Giarrusso, Rendel and Ostermann, ["A Theory of
 Changes for Higher-Order Languages"](https://arxiv.org/abs/1312.0658).
 
+## Dependencies
+
+`bend-kit-int` (`0x4eed9d7a…`), the `I32` used for coordinates, from
+[BendHub](https://hub.bend-lang.com/packages). It's imported by content
+hash, so `bend` fetches exactly that code on first use and checks it.
+
 ## Running
 
 ```sh
 bend PROOF.bend               # ALL PROOFS CHECK when every law holds
 bend deui/list/PROOF.bend     # or one module's laws
 bend examples/lists.bend      # computes a mapped list's edits
+bend examples/scene.bend      # edits a column of rows
 ```
 
 `bend <file> --verdict` checks a proof a second time with Bend's BendTT

@@ -55,6 +55,13 @@ every module's proofs.
   The laws say what each edit does, and that a group's children change
   exactly as the list they're made from would. Coordinates are
   bend-kit-int's `I32`.
+- `column/`: the first view with a derivative. A column stacks rows, each
+  as tall as it says, from the top. Its derivative turns an edit to the
+  rows into a few edits to its scene, whatever its size: inserting a row
+  inserts it where it goes and shifts the rows below down by its height,
+  deleting one deletes it and shifts them back up, and replacing one is
+  both. The laws say what those edits are, and that applying them gives
+  the column of the edited rows, for every edit and every run of them.
 
 `examples/`:
 
@@ -63,6 +70,8 @@ every module's proofs.
   and `diff`'s run between two lists.
 - `scene.bend`: a column of rows; a row inserted second, then one `Shift`
   moves the rows below it.
+- `column.bend`: a column patched by its derivative's edits, beside the
+  column drawn again from the edited rows: the two are the same.
 
 `change/` and `list/` began in bend-puri, as its `ilc/`, at `7b711ea`; their
 history is there.
@@ -89,6 +98,7 @@ bend PROOF.bend               # ALL PROOFS CHECK when every law holds
 bend deui/list/PROOF.bend     # or one module's laws
 bend examples/lists.bend      # computes a mapped list's edits
 bend examples/scene.bend      # edits a column of rows
+bend examples/column.bend     # patches a column, and draws it again
 ```
 
 `bend <file> --verdict` checks a proof a second time with Bend's BendTT

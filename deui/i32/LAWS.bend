@@ -16,3 +16,9 @@ law add_assoc:
   for b: I.I32
   for c: I.I32
   {((a + b : I.I32) + c : I.I32) == (a + (b + c : I.I32) : I.I32) : I.I32}
+
+# LAW: adding b, then 0 - b, gets back where it started.
+law add_sub_cancel:
+  for a: I.I32
+  for b: I.I32
+  {((a + b : I.I32) + (I.I32{0} - b : I.I32) : I.I32) == a : I.I32}

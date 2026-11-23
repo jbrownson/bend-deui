@@ -61,6 +61,25 @@ law u32_add_assoc:
 def u32_add_assoc(a, b, c):
   MU.u32_to_nat_inj(U32.add(U32.add(a, b), c), U32.add(a, U32.add(b, c)), u32_add_assoc_nat(a, b, c))
 
+# Lemma: for any modulus m, adding b and then m - b to a below m gets back
+# to a.
+law add_sub_cancel_mod:
+  for +a: Nat
+  for +b: Nat
+  for +m: Nat
+  for ha: MN.lt(a, m)
+  for hb: MN.lt(b, m)
+  {Nat.mod(Nat.add(Nat.mod(Nat.add(a, b), m), Nat.mod(Nat.sub(m, b), m)), m) == a : Nat}
+
+def add_sub_cancel_mod(a, b, m, ha, hb):
+  %mod_add_left(Nat.add(a, b), Nat.mod(Nat.sub(m, b), m), m) : {_ == a : Nat}
+  %mod_add_right(Nat.add(a, b), Nat.sub(m, b), m) : {_ == a : Nat}
+  %MN.add_assoc_sym(a, b, Nat.sub(m, b)) : {Nat.mod(_, m) == a : Nat}
+  %Equal.sym(Nat, Nat.add(b, Nat.sub(m, b)), m, MN.add_sub_of_le(b, m, MN.le_of_lt(b, m, hb))) : {Nat.mod(Nat.add(a, _), m) == a : Nat}
+  %MN.add_comm(m, a) : {Nat.mod(_, m) == a : Nat}
+  %MN.add_mod_left_sym(a, m) : {_ == a : Nat}
+  MN.mod_eq_of_lt(a, m, ha)
+
 # I32
 # ---
 
@@ -74,4 +93,19 @@ def Laws.add_assoc(a, b, c):
   match a b c:
     case I.I32{x} I.I32{y} I.I32{z}:
       %u32_add_assoc(x, y, z) : {I.I32{U32.add(U32.add(x, y), z)} == I.I32{_} : I.I32}
+      {==}
+
+# U32, through Nat, with 2^32 named m, as bend-mathlib's internal laws
+# take it, so that the checker never expands it.
+def internal_add_sub_cancel(+m: Nat, +a: U32, +b: U32, +e: {Nat.pow(2n, 32n) == m : Nat}) ->
+  {U32.to_nat(U32.add(U32.add(a, b), U32.sub(0, b))) == U32.to_nat(a) : Nat}:
+  %Equal.sym(Nat, U32.to_nat(U32.add(U32.add(a, b), U32.sub(0, b))), Nat.mod(Nat.add(U32.to_nat(U32.add(a, b)), U32.to_nat(U32.sub(0, b))), m), MU.internal_u32_add_wrap(m, U32.add(a, b), U32.sub(0, b), e)) : {_ == U32.to_nat(a) : Nat}
+  %Equal.sym(Nat, U32.to_nat(U32.add(a, b)), Nat.mod(Nat.add(U32.to_nat(a), U32.to_nat(b)), m), MU.internal_u32_add_wrap(m, a, b, e)) : {Nat.mod(Nat.add(_, U32.to_nat(U32.sub(0, b))), m) == U32.to_nat(a) : Nat}
+  %Equal.sym(Nat, U32.to_nat(U32.sub(0, b)), Nat.mod(Nat.add(U32.to_nat(0), Nat.sub(m, U32.to_nat(b))), m), MU.internal_u32_sub_wrap(m, 0, b, e)) : {Nat.mod(Nat.add(Nat.mod(Nat.add(U32.to_nat(a), U32.to_nat(b)), m), _), m) == U32.to_nat(a) : Nat}
+  add_sub_cancel_mod(U32.to_nat(a), U32.to_nat(b), m, MU.internal_u32_to_nat_lt(m, a, e), MU.internal_u32_to_nat_lt(m, b, e))
+
+def Laws.add_sub_cancel(a, b):
+  match a b:
+    case I.I32{+x} I.I32{+y}:
+      %MU.u32_to_nat_inj(U32.add(U32.add(x, y), U32.sub(0, y)), x, internal_add_sub_cancel(Nat.pow(2n, 32n), x, y, {==})) : {I.I32{U32.add(U32.add(x, y), U32.sub(0, y))} == I.I32{_} : I.I32}
       {==}

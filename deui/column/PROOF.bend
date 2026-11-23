@@ -9,6 +9,7 @@ import ../scene/LAWS.bend as SL
 import ../scene/PROOF.bend as SP
 import ../i32/LAWS.bend as IL
 import ../i32/PROOF.bend as IP
+import ../i32/i32.bend as N
 import ./column.bend as K
 import ./LAWS.bend as Laws
 
@@ -201,6 +202,82 @@ def update_present(rows, i, r, e):
       %update_present(t, p, r, e) : {x <> L.update(~K.row_edits(), t, p, C.Replace{r}) == x <> _ : List<&2, K.Row>}
       {==}
 
+# Lemma: deleting a row's scene and inserting a new one where it was, as
+# tall, places the rows with the row replaced.
+law swap_core:
+  for rows: List<&2, K.Row>
+  for i: Nat
+  for +y: I.I32
+  for h: I.I32
+  for s: S.Scene
+  for eh: {K.height(rows, i) == h : I.I32}
+  for e: {K.holds(rows, i) == True{} : Bool}
+  {L.insert(S.Scene, L.remove(S.Scene, K.place(rows, y), i), i, K.placed(K.top(rows, i, y), s)) == K.place(L.update(~K.row_edits(), rows, i, C.Replace{K.Row{h, s}}), y) : List<&2, S.Scene>}
+
+def swap_core(rows, i, y, h, s, eh, e):
+  match rows i:
+    case Nil{} _:
+      Empty.absurd({L.insert(S.Scene, L.remove(S.Scene, K.place(Nil{}, y), i), i, K.placed(K.top(Nil{}, i, y), s)) == K.place(L.update(~K.row_edits(), Nil{}, i, C.Replace{K.Row{h, s}}), y) : List<&2, S.Scene>}, false_true(e))
+    case Con{K.Row{+h0, s0}, t} 0n:
+      %Equal.sym(List<&2, S.Scene>, L.insert(S.Scene, K.place(t, (y + h0 : I.I32)), 0n, K.placed(y, s)), K.placed(y, s) <> K.place(t, (y + h0 : I.I32)), L.insert.front(S.Scene, K.place(t, (y + h0 : I.I32)), K.placed(y, s))) : {_ == K.placed(y, s) <> K.place(t, (y + h : I.I32)) : List<&2, S.Scene>}
+      %eh : {K.placed(y, s) <> K.place(t, (y + h0 : I.I32)) == K.placed(y, s) <> K.place(t, (y + _ : I.I32)) : List<&2, S.Scene>}
+      {==}
+    case Con{K.Row{+h0, s0}, t} 1n+p:
+      %swap_core(t, p, (y + h0 : I.I32), h, s, eh, e) : {K.placed(y, s0) <> L.insert(S.Scene, L.remove(S.Scene, K.place(t, (y + h0 : I.I32)), p), p, K.placed(K.top(t, p, (y + h0 : I.I32)), s)) == K.placed(y, s0) <> _ : List<&2, S.Scene>}
+      {==}
+
+# Lemma: swapping a row for one as tall gives the column with the row
+# replaced.
+law swap_ok:
+  for +rows: List<&2, K.Row>
+  for +i: Nat
+  for h: I.I32
+  for +s: S.Scene
+  for eh: {K.height(rows, i) == h : I.I32}
+  for e: {K.holds(rows, i) == True{} : Bool}
+  {C.run(~S.edit_structure(), K.swap.edits(rows, i, s), K.view(rows)) == K.view(L.update(~K.row_edits(), rows, i, C.Replace{K.Row{h, s}})) : S.Scene}
+
+def swap_ok(rows, i, h, s, eh, e):
+  %Equal.sym(S.Scene, S.apply(S.Group{K.zero(), K.zero(), S.chain(K.place(rows, K.zero()))}, S.Delete{i}), S.Group{K.zero(), K.zero(), S.chain(L.remove(S.Scene, K.place(rows, K.zero()), i))}, SL.group_delete(K.zero(), K.zero(), K.place(rows, K.zero()), i)) : {S.apply(_, S.Insert{i, K.placed(K.top(rows, i, K.zero()), s)}) == K.view(L.update(~K.row_edits(), rows, i, C.Replace{K.Row{h, s}})) : S.Scene}
+  %Equal.sym(S.Scene, S.apply(S.Group{K.zero(), K.zero(), S.chain(L.remove(S.Scene, K.place(rows, K.zero()), i))}, S.Insert{i, K.placed(K.top(rows, i, K.zero()), s)}), S.Group{K.zero(), K.zero(), S.chain(L.insert(S.Scene, L.remove(S.Scene, K.place(rows, K.zero()), i), i, K.placed(K.top(rows, i, K.zero()), s)))}, SL.group_insert(K.zero(), K.zero(), L.remove(S.Scene, K.place(rows, K.zero()), i), i, K.placed(K.top(rows, i, K.zero()), s))) : {_ == K.view(L.update(~K.row_edits(), rows, i, C.Replace{K.Row{h, s}})) : S.Scene}
+  %Equal.sym(List<&2, S.Scene>, L.insert(S.Scene, L.remove(S.Scene, K.place(rows, K.zero()), i), i, K.placed(K.top(rows, i, K.zero()), s)), K.place(L.update(~K.row_edits(), rows, i, C.Replace{K.Row{h, s}}), K.zero()), swap_core(rows, i, K.zero(), h, s, eh, e)) : {S.Group{K.zero(), K.zero(), S.chain(_)} == K.view(L.update(~K.row_edits(), rows, i, C.Replace{K.Row{h, s}})) : S.Scene}
+  {==}
+
+# Lemma: deleting a row and inserting the new one gives the column with
+# the row replaced.
+law reinsert_ok:
+  for +rows: List<&2, K.Row>
+  for +i: Nat
+  for +r: K.Row
+  for e: {K.holds(rows, i) == True{} : Bool}
+  {C.run(~S.edit_structure(), List.append(&2, S.Edit, K.delete.edits(rows, i), K.insert.edits(L.remove(K.Row, rows, i), i, r)), K.view(rows)) == K.view(L.update(~K.row_edits(), rows, i, C.Replace{r})) : S.Scene}
+
+def reinsert_ok(rows, i, r, e):
+  %Equal.sym(S.Scene, C.run(~S.edit_structure(), List.append(&2, S.Edit, K.delete.edits(rows, i), K.insert.edits(L.remove(K.Row, rows, i), i, r)), K.view(rows)), C.run(~S.edit_structure(), K.insert.edits(L.remove(K.Row, rows, i), i, r), C.run(~S.edit_structure(), K.delete.edits(rows, i), K.view(rows))), CL.run_append(~S.edit_structure(), K.delete.edits(rows, i), K.insert.edits(L.remove(K.Row, rows, i), i, r), K.view(rows))) : {_ == K.view(L.update(~K.row_edits(), rows, i, C.Replace{r})) : S.Scene}
+  %Equal.sym(S.Scene, C.run(~S.edit_structure(), K.delete.edits(rows, i), K.view(rows)), K.view(L.remove(K.Row, rows, i)), delete_ok(rows, i)) : {C.run(~S.edit_structure(), K.insert.edits(L.remove(K.Row, rows, i), i, r), _) == K.view(L.update(~K.row_edits(), rows, i, C.Replace{r})) : S.Scene}
+  %Equal.sym(S.Scene, C.run(~S.edit_structure(), K.insert.edits(L.remove(K.Row, rows, i), i, r), K.view(L.remove(K.Row, rows, i))), K.view(L.insert(K.Row, L.remove(K.Row, rows, i), i, r)), insert_ok(L.remove(K.Row, rows, i), i, r)) : {_ == K.view(L.update(~K.row_edits(), rows, i, C.Replace{r})) : S.Scene}
+  %Equal.sym(List<&2, K.Row>, L.update(~K.row_edits(), rows, i, C.Replace{r}), L.insert(K.Row, L.remove(K.Row, rows, i), i, r), update_present(rows, i, r, e)) : {K.view(L.insert(K.Row, L.remove(K.Row, rows, i), i, r)) == K.view(_) : S.Scene}
+  {==}
+
+# Lemma: where there's a row, replacing it, swapped or reinserted, gives
+# the column with the row replaced.
+law resize_ok:
+  for same: Bool
+  for +rows: List<&2, K.Row>
+  for +i: Nat
+  for +h: I.I32
+  for +s: S.Scene
+  for es: {N.same(K.height(rows, i), h) == same : Bool}
+  for e: {K.holds(rows, i) == True{} : Bool}
+  {C.run(~S.edit_structure(), K.resize.edits(same, rows, i, K.Row{h, s}), K.view(rows)) == K.view(L.update(~K.row_edits(), rows, i, C.Replace{K.Row{h, s}})) : S.Scene}
+
+def resize_ok(same, rows, i, h, s, es, e):
+  match same:
+    case True{}:
+      swap_ok(rows, i, h, s, IL.same_eq(K.height(rows, i), h, es), e)
+    case False{}:
+      reinsert_ok(rows, i, K.Row{h, s}, e)
+
 # Lemma: replacing a row's edits give the column with the row replaced.
 law replace_ok:
   for held: Bool
@@ -216,11 +293,9 @@ def replace_ok(held, rows, i, r, e):
       %Equal.sym(List<&2, K.Row>, L.update(~K.row_edits(), rows, i, C.Replace{r}), rows, update_absent(rows, i, r, e)) : {K.view(rows) == K.view(_) : S.Scene}
       {==}
     case True{}:
-      %Equal.sym(S.Scene, C.run(~S.edit_structure(), List.append(&2, S.Edit, K.delete.edits(rows, i), K.insert.edits(L.remove(K.Row, rows, i), i, r)), K.view(rows)), C.run(~S.edit_structure(), K.insert.edits(L.remove(K.Row, rows, i), i, r), C.run(~S.edit_structure(), K.delete.edits(rows, i), K.view(rows))), CL.run_append(~S.edit_structure(), K.delete.edits(rows, i), K.insert.edits(L.remove(K.Row, rows, i), i, r), K.view(rows))) : {_ == K.view(L.update(~K.row_edits(), rows, i, C.Replace{r})) : S.Scene}
-      %Equal.sym(S.Scene, C.run(~S.edit_structure(), K.delete.edits(rows, i), K.view(rows)), K.view(L.remove(K.Row, rows, i)), delete_ok(rows, i)) : {C.run(~S.edit_structure(), K.insert.edits(L.remove(K.Row, rows, i), i, r), _) == K.view(L.update(~K.row_edits(), rows, i, C.Replace{r})) : S.Scene}
-      %Equal.sym(S.Scene, C.run(~S.edit_structure(), K.insert.edits(L.remove(K.Row, rows, i), i, r), K.view(L.remove(K.Row, rows, i))), K.view(L.insert(K.Row, L.remove(K.Row, rows, i), i, r)), insert_ok(L.remove(K.Row, rows, i), i, r)) : {_ == K.view(L.update(~K.row_edits(), rows, i, C.Replace{r})) : S.Scene}
-      %Equal.sym(List<&2, K.Row>, L.update(~K.row_edits(), rows, i, C.Replace{r}), L.insert(K.Row, L.remove(K.Row, rows, i), i, r), update_present(rows, i, r, e)) : {K.view(L.insert(K.Row, L.remove(K.Row, rows, i), i, r)) == K.view(_) : S.Scene}
-      {==}
+      match r:
+        case K.Row{+h, +s}:
+          resize_ok(N.same(K.height(rows, i), h), rows, i, h, s, {==}, e)
 
 # The column
 # ----------

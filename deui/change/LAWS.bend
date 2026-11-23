@@ -207,31 +207,51 @@ law recompute_ok:
   for ~f: C.Value(ca) -> C.Value(cb)
   C.Inc.ok(ca, C.whole(~cb), C.recompute(~ca, ~cb, ~f))
 
-# Composing
-# ---------
+# Keeping
+# -------
+# A Cached function keeps what its derivative needs instead of taking the
+# value before the edit, so composing two never runs the first again to
+# give the second its input.
 
-# LAW: g after f applies f then g, and its derivative gives f's edit for
-# the input's, then g's for that, from f's result.
+# LAW: an Inc, cached, keeps its input: f gives its result and the input,
+# and df its edit and the edited input.
+law cached:
+  for ~ca: C.EditStructure
+  for ~cb: C.EditStructure
+  for ~g: C.Inc<ca, cb>
+  {C.cached(~ca, ~cb, ~g) == C.Cached{C.Value(ca), a => C.cached.f(~ca, ~cb, ~g, a), a => d => C.cached.df(~ca, ~cb, ~g, a, d)} : C.Cached<ca, cb>}
+
+# LAW: g after f applies f then g, keeping both caches, and its derivative
+# gives f's edit for the input's, from f's cache, then g's for that, from
+# g's.
 law compose:
   for ~ca: C.EditStructure
   for ~cb: C.EditStructure
   for ~cc: C.EditStructure
-  for ~f: C.Inc<ca, cb>
-  for ~g: C.Inc<cb, cc>
-  {C.compose(~ca, ~cb, ~cc, ~f, ~g) == C.Inc{a => C.Inc.f(cb, cc, g)(C.Inc.f(ca, cb, f)(a)), a => d => C.compose.df(~ca, ~cb, ~cc, ~f, ~g, a, d)} : C.Inc<ca, cc>}
+  for ~f: C.Cached<ca, cb>
+  for ~g: C.Cached<cb, cc>
+  {C.compose(~ca, ~cb, ~cc, ~f, ~g) == C.Cached{C.Both<C.Cached.Cache(ca, cb, f), C.Cached.Cache(cb, cc, g)>, a => C.compose.f(~ca, ~cb, ~cc, ~f, ~g, a), c => d => C.compose.df(~ca, ~cb, ~cc, ~f, ~g, c, d)} : C.Cached<ca, cc>}
 
 # It follows that:
+
+# LAW: a cached Inc is correct, if the Inc is.
+law cached_ok:
+  for ~ca: C.EditStructure
+  for ~cb: C.EditStructure
+  for ~g: C.Inc<ca, cb>
+  for ~g_ok: C.Inc.ok(ca, cb, g)
+  C.Cached.ok(ca, cb, C.cached(~ca, ~cb, ~g))
 
 # LAW: g after f is correct, if f and g are.
 law compose_ok:
   for ~ca: C.EditStructure
   for ~cb: C.EditStructure
   for ~cc: C.EditStructure
-  for ~f: C.Inc<ca, cb>
-  for ~g: C.Inc<cb, cc>
-  for ~f_ok: C.Inc.ok(ca, cb, f)
-  for ~g_ok: C.Inc.ok(cb, cc, g)
-  C.Inc.ok(ca, cc, C.compose(~ca, ~cb, ~cc, ~f, ~g))
+  for ~f: C.Cached<ca, cb>
+  for ~g: C.Cached<cb, cc>
+  for ~f_ok: C.Cached.ok(ca, cb, f)
+  for ~g_ok: C.Cached.ok(cb, cc, g)
+  C.Cached.ok(ca, cc, C.compose(~ca, ~cb, ~cc, ~f, ~g))
 
 # Mapping edits
 # -------------

@@ -2,6 +2,7 @@ import Base
 import 0x4eed9d7ac6ece61523d747a9d804e4f0/int.bend as I
 import 0x15432fae482a0916f1cfffa8b5e1a335/nat.bend as MN
 import 0x15432fae482a0916f1cfffa8b5e1a335/u32.bend as MU
+import ./i32.bend as N
 import ./LAWS.bend as Laws
 
 # U32 addition, through Nat: bend-mathlib says it wraps modulo 2^32, and
@@ -109,3 +110,9 @@ def Laws.add_sub_cancel(a, b):
     case I.I32{+x} I.I32{+y}:
       %MU.u32_to_nat_inj(U32.add(U32.add(x, y), U32.sub(0, y)), x, internal_add_sub_cancel(Nat.pow(2n, 32n), x, y, {==})) : {I.I32{U32.add(U32.add(x, y), U32.sub(0, y))} == I.I32{_} : I.I32}
       {==}
+
+def Laws.same_eq(a, b, e):
+  match a b:
+    case I.I32{+x} I.I32{+y}:
+      n = MN.eq_of_is_eq(U32.to_nat(x), U32.to_nat(y), Equal.trans(Bool, Nat.is_eq(U32.to_nat(x), U32.to_nat(y)), U32.is_eq(x, y), True{}, Equal.sym(Bool, U32.is_eq(x, y), Nat.is_eq(U32.to_nat(x), U32.to_nat(y)), MU.u32_is_eq_to_nat(x, y)), e))
+      Equal.cong(U32, I.I32, w => I.I32{w}, x, y, MU.u32_to_nat_inj(x, y, n))

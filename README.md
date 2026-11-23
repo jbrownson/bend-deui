@@ -20,8 +20,9 @@ every module's proofs.
 `deui/`, the library:
 
 - `i32/`: what coordinates' addition promises: in either order, and in
-  either grouping, it gives the same. Proved through Nat with
-  bend-mathlib's lemmas about U32.
+  either grouping, it gives the same; and that `same`, which compares two
+  coordinates' bits, finds only equal ones the same. Proved through Nat
+  with bend-mathlib's lemmas about U32.
 - `change/`: edits to any value. An edit structure (`EditStructure`) says
   how a type's values are edited: the type of the values (`Value`), the type
   of their edits (`Edit`), and how to apply one. A change structure
@@ -34,9 +35,15 @@ every module's proofs.
   with its derivative, which gives the edit to the function's result from an
   edit to its input. `lift` turns an `Inc` whose derivative gives a run for
   one edit into one that handles runs, and `whole.lift` lifts one to values
-  that can also be replaced. `compose` is one `Inc` after another, its
-  derivative the first's then the second's. The laws say what each
-  operation returns, and that lifting or composing correct `Inc`s gives a
+  that can also be replaced. An `Inc`'s derivative takes the value before
+  the edit, so one `Inc` after another would have to run the first again
+  to give the second its input. A `Cached<ca, cb>` keeps what its
+  derivative needs instead: its function gives its result and a cache
+  (`Kept`), and its derivative, from the cache and an edit, gives the edit
+  to the result and the new cache. `cached` makes one of an `Inc` by
+  keeping its input, and `compose` is one `Cached` after another, keeping
+  both caches, so nothing runs again. The laws say what each operation
+  returns, and that lifting, caching or composing correct ones gives a
   correct one.
 - `list/`: a list's edits (insert, delete, and update an element in place),
   given how its elements are edited (`edit_structure`), `patch` to apply a
@@ -65,18 +72,21 @@ every module's proofs.
   as tall as it says, from the top. Its derivative turns an edit to the
   rows into a few edits to its scene, whatever its size: inserting a row
   inserts it where it goes and shifts the rows below down by its height,
-  deleting one deletes it and shifts them back up, and replacing one is
-  both. The laws say what those edits are, and that applying them gives
-  the column of the edited rows, for every edit and every run of them.
+  deleting one deletes it and shifts them back up, and replacing one
+  with one as tall deletes it and inserts the new one where it was,
+  leaving the rows below alone; with one of another height, it's both.
+  The laws say what those edits are, and that applying them gives the
+  column of the edited rows, for every edit and every run of them.
 - `app/`: an app. A state, edited as its edit structure says, a view that
-  is an incremental function from runs of the state's edits to runs of the
+  is a `Cached` function from runs of the state's edits to runs of the
   scene's, and three handlers, fixed code passed as templates: from the
   state and what a press hit, which key went down or what was typed, to a
   run of edits.
-  An event's edits go to the state, and through the view's derivative to
-  the scene on screen; the view runs once, at launch. The laws say that
-  if the derivative is correct, the scene on screen is the view of the
-  state after every event, as if it had run again.
+  An event's edits go to the state, and through the view's derivative,
+  from what the view kept, to the scene on screen; the view runs once, at
+  launch. The laws say that if the derivative is correct, the scene on
+  screen and what the view keeps are what the view gives for the state
+  after every event, as if it had run again.
 
 `deui/window/`, the native window, outside the proofs since it calls
 native code:
@@ -109,10 +119,12 @@ native code:
 - `todo.bend`: a to-do list. Click an item's box to tick it and its x to
   delete it; Return starts a new item at the top, typing writes into it,
   and Backspace takes a letter back. Its view is an item's row mapped over
-  the list (`map.inc`), then the column (`compose`), so its derivative's
-  law follows from theirs in one line (`view_ok`). It plays events and
+  the list (`map.inc`), then the column (`compose`), each `cached`, so its
+  derivative's law follows from theirs (`view_ok`). It plays events and
   prints the items left and whether the scene on screen is their view.
 - `todo_window.bend`: the to-do list in a window.
+- `todo_bench.bend`: how long the to-do list takes with many items, through
+  its derivative or by running the view again.
 
 `change/` and `list/` began in bend-puri, as its `ilc/`, at `7b711ea`; their
 history is there.
@@ -123,6 +135,27 @@ library built on incremental computation, and his
 [purescript-incremental-functions](https://github.com/paf31/purescript-incremental-functions),
 from the theory in Cai, Giarrusso, Rendel and Ostermann, ["A Theory of
 Changes for Higher-Order Languages"](https://arxiv.org/abs/1312.0658).
+`Cached` is the cache-transfer style of Giarrusso, Régis-Gianas and
+Schuster's "Incremental λ-Calculus in Cache-Transfer Style".
+
+## Speed
+
+`todo_bench.bend`, built natively, on this repository's development
+machine (a cloud container), 400 events into a list of 8000 items, leaving
+out the 9 ms that making the list and its first view takes:
+
+| | 400 events | each |
+|---|---|---|
+| typing into the first item, through the derivative | 4.5 ms | 11 µs |
+| typing into the first item, running the view again | 5.2 s | 13 ms |
+| a new item at the top each time, through the derivative | 67 ms | 0.17 ms |
+
+Typing changes one row, as tall as before, so its edits touch that row
+alone. A new item at the top moves every row below it by one `Shift`, which
+still visits each of them, so its cost grows with the list; each visit is a
+translation, not the row made again. Finding a row by position walks the
+list to it, so an edit's cost also grows with how far down it is. Neither
+is measured past this.
 
 ## Dependencies
 
@@ -150,6 +183,7 @@ bend examples/rows_pixels.bend -o px && ./px # draws the app on the CPU
 bend examples/rows_window.bend -o win && ./win  # the app in a window
 bend examples/todo.bend -o todo && ./todo   # plays events through the to-do list
 bend examples/todo_window.bend -o todo && ./todo  # the to-do list in a window
+bend examples/todo_bench.bend -o bench && time ./bench  # times the to-do list
 ```
 
 `bend <file> --verdict` checks a proof a second time with Bend's BendTT

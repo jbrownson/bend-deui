@@ -1,7 +1,8 @@
 import Base
 import 0x4eed9d7ac6ece61523d747a9d804e4f0/int.bend as I
+import ./i32.bend as N
 
-# What I32 addition promises; PROOF.bend proves it. Coordinates are
+# What I32 addition and comparison promise; PROOF.bend proves it. Coordinates are
 # bend-kit-int's I32, which adds as U32 does, wrapping at 2^32.
 
 # LAW: adding in either order gives the same.
@@ -22,3 +23,10 @@ law add_sub_cancel:
   for a: I.I32
   for b: I.I32
   {((a + b : I.I32) + (I.I32{0} - b : I.I32) : I.I32) == a : I.I32}
+
+# LAW: coordinates found the same are equal.
+law same_eq:
+  for a: I.I32
+  for b: I.I32
+  for e: {N.same(a, b) == True{} : Bool}
+  {a == b : I.I32}

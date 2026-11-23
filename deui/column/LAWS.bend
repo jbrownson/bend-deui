@@ -51,8 +51,10 @@ law edit_delete:
   for +i: Nat
   {K.edit(rows, L.Delete{i}) == [S.Delete{i}, S.Shift{i, K.zero(), (K.zero() - K.height(rows, i) : I.I32)}] : List<&2, S.Edit>}
 
-# LAW: replacing the row at i deletes it and inserts the new one, as the
-# laws above say; past the end, it does nothing.
+# LAW: replacing the row at i with one as tall deletes it and inserts the
+# new one where it was, leaving the rows after it where they are; with one
+# of another height, it deletes and inserts as the laws above say; past the
+# end, it does nothing.
 law edit_replace:
   for +rows: List<&2, K.Row>
   for +i: Nat

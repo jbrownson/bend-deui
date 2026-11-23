@@ -53,8 +53,12 @@ def click(x: F32, y: F32) -> Event:
 def events() -> List<&2, Event>:
   [click(10.0, 15.0), Key{97, True{}}, click(10.0, 7.0)]
 
-def model() -> A.Model<K.rows_edits()>:
-  A.play(~K.rows_edits(), ~K.inc(), ~press, ~key, ~text, events(), A.start(~K.rows_edits(), ~K.inc(), rows()))
+# The view: the column, keeping its rows for its derivative.
+def view() -> C.Cached<C.runs(~K.rows_edits()), C.runs(~S.edit_structure())>:
+  C.cached(~C.runs(~K.rows_edits()), ~C.runs(~S.edit_structure()), ~K.inc())
+
+def model() -> A.Model<K.rows_edits(), view()>:
+  A.play(~K.rows_edits(), ~view(), ~press, ~key, ~text, events(), A.start(~K.rows_edits(), ~view(), rows()))
 
 # Two scenes are the same, field by field.
 def same(a: S.Scene, b: S.Scene) -> Bool:
@@ -90,10 +94,10 @@ def yes(b: Bool) -> String:
 
 # The heights left, and whether the scene on screen is the column drawn
 # again from the rows left, as the app's laws say it is.
-def report(m: A.Model<K.rows_edits()>) -> String:
+def report(+m: A.Model<K.rows_edits(), view()>) -> String:
   match m:
-    case A.Model{+state, scene}:
-      String.concat(["heights: ", heights(state), "\nthe scene on screen is the view of the rows: ", yes(same(scene, K.view(state))), "\n"])
+    case A.Model{+state, shown}:
+      String.concat(["heights: ", heights(state), "\nthe scene on screen is the view of the rows: ", yes(same(A.scene(K.rows_edits(), view(), m), K.view(state))), "\n"])
 
 def main() -> IO(Unit):
   IO.print(report(model()))

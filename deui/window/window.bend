@@ -80,54 +80,49 @@ def resized(m: Maybe<&2, A.Size>, +r: Gpu.Renderer) -> IO(Gpu.Renderer):
 
 # The app's answer to a batch: the model after its events, drawn again, or
 # stopping when the window closes.
-def next(-cs: C.EditStructure, close: Bool, r: Gpu.Renderer, font: Maybe<&2, F.Font>, m: D.Model<cs>) -> Loop.Step<(D.Model<cs> & Gpu.Renderer & Maybe<&2, F.Font>)>:
+def next(-cs: C.EditStructure, -view: C.Cached<C.runs(~cs), C.runs(~S.edit_structure())>, close: Bool, r: Gpu.Renderer, font: Maybe<&2, F.Font>, m: D.Model<cs, view>) -> Loop.Step<(D.Model<cs, view> & Gpu.Renderer & Maybe<&2, F.Font>)>:
   match close:
     case True{}:
       Loop.Stop{(m, r, font)}
     case False{}:
       Loop.Redraw{(m, r, font)}
 
-def update(~cs: C.EditStructure, ~view: C.Inc<C.runs(~cs), C.runs(~S.edit_structure())>,
+def update(~cs: C.EditStructure, ~view: C.Cached<C.runs(~cs), C.runs(~S.edit_structure())>,
   ~press: C.Value(cs) -> S.Hit -> List<&2, C.Edit(cs)>, ~key: C.Value(cs) -> U32 -> List<&2, C.Edit(cs)>, ~text: C.Value(cs) -> String -> List<&2, C.Edit(cs)>,
-  win: A.Win, batch: List<&2, A.Input>, st: D.Model<cs> & Gpu.Renderer & Maybe<&2, F.Font>) -> IO(Loop.Step<(D.Model<cs> & Gpu.Renderer & Maybe<&2, F.Font>)>):
+  win: A.Win, batch: List<&2, A.Input>, st: D.Model<cs, view> & Gpu.Renderer & Maybe<&2, F.Font>) -> IO(Loop.Step<(D.Model<cs, view> & Gpu.Renderer & Maybe<&2, F.Font>)>):
   (m, r, font) = st
   +ins = batch
   +es = events(ins)
-  do IO<Loop.Step<(D.Model<cs> & Gpu.Renderer & Maybe<&2, F.Font>)>>:
+  do IO<Loop.Step<(D.Model<cs, view> & Gpu.Renderer & Maybe<&2, F.Font>)>>:
     +r1 : Gpu.Renderer <- resized(A.resized(ins, None{}), r)
-    return next(cs, closing(es), r1, font, D.play(~cs, ~view, ~press, ~key, ~text, es, m))
+    return next(cs, view, closing(es), r1, font, D.play(~cs, ~view, ~press, ~key, ~text, es, m))
 
 # Another frame is owed when the swapchain was rebuilt while presenting.
-def drawn(-cs: C.EditStructure, pending: Bool, r: Gpu.Renderer, font: Maybe<&2, F.Font>, m: D.Model<cs>) -> Loop.Step<(D.Model<cs> & Gpu.Renderer & Maybe<&2, F.Font>)>:
+def drawn(-cs: C.EditStructure, -view: C.Cached<C.runs(~cs), C.runs(~S.edit_structure())>, pending: Bool, r: Gpu.Renderer, font: Maybe<&2, F.Font>, m: D.Model<cs, view>) -> Loop.Step<(D.Model<cs, view> & Gpu.Renderer & Maybe<&2, F.Font>)>:
   match pending:
     case True{}:
       Loop.Redraw{(m, r, font)}
     case False{}:
       Loop.Keep{(m, r, font)}
 
-def scene.of(-cs: C.EditStructure, m: D.Model<cs>) -> S.Scene:
-  match m:
-    case D.Model{state, scene}:
-      scene
-
 # The frame for a target of the given size.
 def sized(s: S.Scene, +font: Maybe<&2, F.Font>, size: V.Size, +bg: U32) -> Sc.Scene:
   V.Size{w, h} = size
   P.frame(s, font, w, h, bg)
 
-def draw.go(~cs: C.EditStructure, ~bg: U32, +m: D.Model<cs>, +r: Gpu.Renderer, +font: Maybe<&2, F.Font>) ->
-  IO(Loop.Step<(D.Model<cs> & Gpu.Renderer & Maybe<&2, F.Font>)>):
-  do IO<Loop.Step<(D.Model<cs> & Gpu.Renderer & Maybe<&2, F.Font>)>>:
-    +r1 : Gpu.Renderer <- Gpu.draw(r, sized(scene.of(cs, m), font, Gpu.target_size(r), bg))
-    return drawn(cs, Gpu.pending(r1), r1, font, m)
+def draw.go(~cs: C.EditStructure, ~view: C.Cached<C.runs(~cs), C.runs(~S.edit_structure())>, ~bg: U32, +m: D.Model<cs, view>, +r: Gpu.Renderer, +font: Maybe<&2, F.Font>) ->
+  IO(Loop.Step<(D.Model<cs, view> & Gpu.Renderer & Maybe<&2, F.Font>)>):
+  do IO<Loop.Step<(D.Model<cs, view> & Gpu.Renderer & Maybe<&2, F.Font>)>>:
+    +r1 : Gpu.Renderer <- Gpu.draw(r, sized(D.scene(cs, view, m), font, Gpu.target_size(r), bg))
+    return drawn(cs, view, Gpu.pending(r1), r1, font, m)
 
-def draw(~cs: C.EditStructure, ~bg: U32, win: A.Win, st: D.Model<cs> & Gpu.Renderer & Maybe<&2, F.Font>) ->
-  IO(Loop.Step<(D.Model<cs> & Gpu.Renderer & Maybe<&2, F.Font>)>):
+def draw(~cs: C.EditStructure, ~view: C.Cached<C.runs(~cs), C.runs(~S.edit_structure())>, ~bg: U32, win: A.Win, st: D.Model<cs, view> & Gpu.Renderer & Maybe<&2, F.Font>) ->
+  IO(Loop.Step<(D.Model<cs, view> & Gpu.Renderer & Maybe<&2, F.Font>)>):
   (m, r, font) = st
-  draw.go(~cs, ~bg, m, r, font)
+  draw.go(~cs, ~view, ~bg, m, r, font)
 
 # The GPU objects go before the window they were made from.
-def finish(-cs: C.EditStructure, end: A.Win & D.Model<cs> & Gpu.Renderer & Maybe<&2, F.Font>) -> IO(Unit):
+def finish(-cs: C.EditStructure, -view: C.Cached<C.runs(~cs), C.runs(~S.edit_structure())>, end: A.Win & D.Model<cs, view> & Gpu.Renderer & Maybe<&2, F.Font>) -> IO(Unit):
   (win, m, r, font) = end
   do IO<Unit>:
     +report : V.Report <- Gpu.close(r)
@@ -146,7 +141,7 @@ def loaded(r: Result<&2, &2, String, F.Font>) -> Maybe<&2, F.Font>:
 # Runs an app in a window of the given size on a background of `bg`
 # (0xRRGGBB), its labels in the TrueType font at font_path, from `state`,
 # until the window closes.
-def run(~cs: C.EditStructure, ~view: C.Inc<C.runs(~cs), C.runs(~S.edit_structure())>,
+def run(~cs: C.EditStructure, ~view: C.Cached<C.runs(~cs), C.runs(~S.edit_structure())>,
   ~press: C.Value(cs) -> S.Hit -> List<&2, C.Edit(cs)>, ~key: C.Value(cs) -> U32 -> List<&2, C.Edit(cs)>, ~text: C.Value(cs) -> String -> List<&2, C.Edit(cs)>,
   ~bg: U32, title: String, font_path: String, +width: U32, +height: U32, +state: C.Value(cs)) -> IO(Unit):
   do IO<Unit>:
@@ -154,7 +149,7 @@ def run(~cs: C.EditStructure, ~view: C.Inc<C.runs(~cs), C.runs(~S.edit_structure
     +win : A.Win <- IO.try(A.Win, A.open(A.options(title, width, height)))
     +native : List<&2, U32> <- A.native(win)
     +r : Gpu.Renderer <- Gpu.open(native, width, height, True{})
-    end : A.Win & D.Model<cs> & Gpu.Renderer & Maybe<&2, F.Font> <- Loop.run(~(D.Model<cs> & Gpu.Renderer & Maybe<&2, F.Font>),
+    end : A.Win & D.Model<cs, view> & Gpu.Renderer & Maybe<&2, F.Font> <- Loop.run(~(D.Model<cs, view> & Gpu.Renderer & Maybe<&2, F.Font>),
       ~(w => b => st => update(~cs, ~view, ~press, ~key, ~text, w, b, st)),
-      ~(w => st => draw(~cs, ~bg, w, st)), win, (D.start(~cs, ~view, state), r, loaded(font)))
-    finish(cs, end)
+      ~(w => st => draw(~cs, ~view, ~bg, w, st)), win, (D.start(~cs, ~view, state), r, loaded(font)))
+    finish(cs, view, end)

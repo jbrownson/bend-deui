@@ -141,15 +141,89 @@ def whole.lift(~ca: EditStructure, ~cb: EditStructure, ~g: Inc<ca, cb>) -> Inc<w
 def recompute(~ca: EditStructure, ~cb: EditStructure, ~f: Value(ca) -> Value(cb)) -> Inc<ca, whole(~cb)>:
   Inc{f, a => e => Replace{f(EditStructure.apply(ca)(e, a))}}
 
-# compose's derivative: f's edit for the input's, then g's for that, from
-# f's result.
-def compose.df(~ca: EditStructure, ~cb: EditStructure, ~cc: EditStructure, ~f: Inc<ca, cb>, ~g: Inc<cb, cc>,
-  +a: Value(ca), d: Edit(ca)) -> Edit(cc):
-  Inc.df(cb, cc, g)(Inc.f(ca, cb, f)(a), Inc.df(ca, cb, f)(a, d))
+# Keeping
+# -------
 
-# g after f, as an incremental function.
-def compose(~ca: EditStructure, ~cb: EditStructure, ~cc: EditStructure, ~f: Inc<ca, cb>, ~g: Inc<cb, cc>) -> Inc<ca, cc>:
-  Inc{a => Inc.f(cb, cc, g)(Inc.f(ca, cb, f)(a)), a => d => compose.df(~ca, ~cb, ~cc, ~f, ~g, a, d)}
+# A result, and what its derivative will need: a cache.
+type Kept<-A: Data, -K: Data> is Data:
+  Kept{result: A, cache: K}
+
+def Kept.result(-A: Data, -K: Data, k: Kept<A, K>) -> A:
+  match k:
+    case Kept{r, c}:
+      r
+
+def Kept.cache(-A: Data, -K: Data, k: Kept<A, K>) -> K:
+  match k:
+    case Kept{r, c}:
+      c
+
+# Two caches, one for each half of a composition.
+type Both<-A: Data, -B: Data> is Data:
+  Both{first: A, second: B}
+
+# An incremental function that keeps what its derivative needs, rather
+# than taking the value before the edit: f gives its result and a cache,
+# and df, from the cache and an edit, gives the edit to the result and the
+# cache for the edited value. Composing these needs no intermediate value,
+# so nothing runs again.
+type Cached<-ca: EditStructure, -cb: EditStructure> is Type:
+  Cached{Cache: Data, f: Value(ca) -> Kept<Value(cb), Cache>, df: Cache -> Edit(ca) -> Kept<Edit(cb), Cache>}
+
+def Cached.Cache(-ca: EditStructure, -cb: EditStructure, g: Cached<ca, cb>) -> Data:
+  match g:
+    case Cached{k, f, df}:
+      k
+
+def Cached.f(-ca: EditStructure, -cb: EditStructure, g: Cached<ca, cb>) -> Value(ca) -> Kept<Value(cb), Cached.Cache(ca, cb, g)>:
+  match g:
+    case Cached{k, f, df}:
+      f
+
+def Cached.df(-ca: EditStructure, -cb: EditStructure, g: Cached<ca, cb>) -> Cached.Cache(ca, cb, g) -> Edit(ca) -> Kept<Edit(cb), Cached.Cache(ca, cb, g)>:
+  match g:
+    case Cached{k, f, df}:
+      df
+
+# A kept result after its derivative's answer: the edit applied to the
+# result, and the new cache.
+def Kept.after(~cb: EditStructure, -K: Data, +step: Kept<Edit(cb), K>, b: Value(cb)) -> Kept<Value(cb), K>:
+  Kept{EditStructure.apply(cb)(Kept.result(Edit(cb), K, step), b), Kept.cache(Edit(cb), K, step)}
+
+# g's derivative is correct: its answer, from what f kept for a, gives
+# what f gives for the edited value, result and cache alike.
+def Cached.ok(-ca: EditStructure, -cb: EditStructure, g: Cached<ca, cb>) -> Type:
+  @a: Value(ca) -> @d: Edit(ca) -> {Kept.after(~cb, Cached.Cache(ca, cb, g), Cached.df(ca, cb, g)(Kept.cache(Value(cb), Cached.Cache(ca, cb, g), Cached.f(ca, cb, g)(a)), d), Kept.result(Value(cb), Cached.Cache(ca, cb, g), Cached.f(ca, cb, g)(a))) == Cached.f(ca, cb, g)(EditStructure.apply(ca)(d, a)) : Kept<Value(cb), Cached.Cache(ca, cb, g)>}
+
+# An Inc, keeping its input for its derivative.
+def cached.f(~ca: EditStructure, ~cb: EditStructure, ~g: Inc<ca, cb>, +a: Value(ca)) -> Kept<Value(cb), Value(ca)>:
+  Kept{Inc.f(ca, cb, g)(a), a}
+
+def cached.df(~ca: EditStructure, ~cb: EditStructure, ~g: Inc<ca, cb>, +a: Value(ca), +d: Edit(ca)) -> Kept<Edit(cb), Value(ca)>:
+  Kept{Inc.df(ca, cb, g)(a, d), EditStructure.apply(ca)(d, a)}
+
+def cached(~ca: EditStructure, ~cb: EditStructure, ~g: Inc<ca, cb>) -> Cached<ca, cb>:
+  Cached{Value(ca), a => cached.f(~ca, ~cb, ~g, a), a => d => cached.df(~ca, ~cb, ~g, a, d)}
+
+# g after f: f's result goes to g, and the cache is both of theirs.
+def compose.f(~ca: EditStructure, ~cb: EditStructure, ~cc: EditStructure, ~f: Cached<ca, cb>, ~g: Cached<cb, cc>,
+  a: Value(ca)) -> Kept<Value(cc), Both<Cached.Cache(ca, cb, f), Cached.Cache(cb, cc, g)>>:
+  +r = Cached.f(ca, cb, f)(a)
+  +s = Cached.f(cb, cc, g)(Kept.result(Value(cb), Cached.Cache(ca, cb, f), r))
+  Kept{Kept.result(Value(cc), Cached.Cache(cb, cc, g), s), Both{Kept.cache(Value(cb), Cached.Cache(ca, cb, f), r), Kept.cache(Value(cc), Cached.Cache(cb, cc, g), s)}}
+
+# Its derivative: f's edit for the input's, from f's cache, then g's for
+# that, from g's.
+def compose.df(~ca: EditStructure, ~cb: EditStructure, ~cc: EditStructure, ~f: Cached<ca, cb>, ~g: Cached<cb, cc>,
+  c: Both<Cached.Cache(ca, cb, f), Cached.Cache(cb, cc, g)>, d: Edit(ca)) -> Kept<Edit(cc), Both<Cached.Cache(ca, cb, f), Cached.Cache(cb, cc, g)>>:
+  match c:
+    case Both{c1, c2}:
+      +p = Cached.df(ca, cb, f)(c1, d)
+      +q = Cached.df(cb, cc, g)(c2, Kept.result(Edit(cb), Cached.Cache(ca, cb, f), p))
+      Kept{Kept.result(Edit(cc), Cached.Cache(cb, cc, g), q), Both{Kept.cache(Edit(cb), Cached.Cache(ca, cb, f), p), Kept.cache(Edit(cc), Cached.Cache(cb, cc, g), q)}}
+
+def compose(~ca: EditStructure, ~cb: EditStructure, ~cc: EditStructure, ~f: Cached<ca, cb>, ~g: Cached<cb, cc>) -> Cached<ca, cc>:
+  Cached{Both<Cached.Cache(ca, cb, f), Cached.Cache(cb, cc, g)>, a => compose.f(~ca, ~cb, ~cc, ~f, ~g, a), c => d => compose.df(~ca, ~cb, ~cc, ~f, ~g, c, d)}
 
 # Edits mapped by fe, in order.
 def map.edits(~EA: Data, ~EB: Data, ~fe: EA -> EB, es: List<&2, EA>) -> List<&2, EB>:

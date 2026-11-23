@@ -157,36 +157,51 @@ def Laws.map_edits_nil(EA, EB, fe):
 def Laws.map_edits_con(EA, EB, fe, e, es):
   {==}
 
-# Composing
-# ---------
+# Keeping
+# -------
+
+def Laws.cached(ca, cb, g):
+  {==}
 
 def Laws.compose(ca, cb, cc, f, g):
   {==}
 
-# Lemma: g after f is correct at a and d: g's law at f's result, then f's
-# law under g.
+# Lemma: a cached Inc is correct at a and d: the Inc's law, under Kept.
+law cached_at:
+  for ~ca: C.EditStructure
+  for ~cb: C.EditStructure
+  for ~g: C.Inc<ca, cb>
+  for ~g_ok: C.Inc.ok(ca, cb, g)
+  for +a: C.Value(ca)
+  for +d: C.Edit(ca)
+  {C.Kept.after(~cb, C.Value(ca), C.cached.df(~ca, ~cb, ~g, a, d), C.Inc.f(ca, cb, g)(a)) == C.cached.f(~ca, ~cb, ~g, C.EditStructure.apply(ca)(d, a)) : C.Kept<C.Value(cb), C.Value(ca)>}
+
+def cached_at(ca, cb, g, g_ok, a, d):
+  %g_ok(a, d) : {C.Kept{C.EditStructure.apply(cb)(C.Inc.df(ca, cb, g)(a, d), C.Inc.f(ca, cb, g)(a)), C.EditStructure.apply(ca)(d, a)} == C.Kept{_, C.EditStructure.apply(ca)(d, a)} : C.Kept<C.Value(cb), C.Value(ca)>}
+  {==}
+
+def Laws.cached_ok(ca, cb, g, g_ok):
+  a => d => cached_at(~ca, ~cb, ~g, ~g_ok, a, d)
+
+# Lemma: g after f is correct at a and d: f's law gives what f keeps for
+# the edited value, and g's law, at f's result, what g keeps for that.
 law compose_at:
   for ~ca: C.EditStructure
   for ~cb: C.EditStructure
   for ~cc: C.EditStructure
-  for ~f: C.Inc<ca, cb>
-  for ~g: C.Inc<cb, cc>
-  for ~f_ok: C.Inc.ok(ca, cb, f)
-  for ~g_ok: C.Inc.ok(cb, cc, g)
+  for ~f: C.Cached<ca, cb>
+  for ~g: C.Cached<cb, cc>
+  for ~f_ok: C.Cached.ok(ca, cb, f)
+  for ~g_ok: C.Cached.ok(cb, cc, g)
   for +a: C.Value(ca)
   for +d: C.Edit(ca)
-  {C.EditStructure.apply(cc)(C.compose.df(~ca, ~cb, ~cc, ~f, ~g, a, d), C.Inc.f(cb, cc, g)(C.Inc.f(ca, cb, f)(a))) == C.Inc.f(cb, cc, g)(C.Inc.f(ca, cb, f)(C.EditStructure.apply(ca)(d, a))) : C.Value(cc)}
+  {C.Kept.after(~cc, C.Both<C.Cached.Cache(ca, cb, f), C.Cached.Cache(cb, cc, g)>, C.compose.df(~ca, ~cb, ~cc, ~f, ~g, C.Kept.cache(C.Value(cc), C.Both<C.Cached.Cache(ca, cb, f), C.Cached.Cache(cb, cc, g)>, C.compose.f(~ca, ~cb, ~cc, ~f, ~g, a)), d), C.Kept.result(C.Value(cc), C.Both<C.Cached.Cache(ca, cb, f), C.Cached.Cache(cb, cc, g)>, C.compose.f(~ca, ~cb, ~cc, ~f, ~g, a))) == C.compose.f(~ca, ~cb, ~cc, ~f, ~g, C.EditStructure.apply(ca)(d, a)) : C.Kept<C.Value(cc), C.Both<C.Cached.Cache(ca, cb, f), C.Cached.Cache(cb, cc, g)>>}
 
 def compose_at(ca, cb, cc, f, g, f_ok, g_ok, a, d):
-  Equal.trans(C.Value(cc),
-    C.EditStructure.apply(cc)(C.Inc.df(cb, cc, g)(C.Inc.f(ca, cb, f)(a), C.Inc.df(ca, cb, f)(a, d)), C.Inc.f(cb, cc, g)(C.Inc.f(ca, cb, f)(a))),
-    C.Inc.f(cb, cc, g)(C.EditStructure.apply(cb)(C.Inc.df(ca, cb, f)(a, d), C.Inc.f(ca, cb, f)(a))),
-    C.Inc.f(cb, cc, g)(C.Inc.f(ca, cb, f)(C.EditStructure.apply(ca)(d, a))),
-    g_ok(C.Inc.f(ca, cb, f)(a), C.Inc.df(ca, cb, f)(a, d)),
-    Equal.cong(C.Value(cb), C.Value(cc), C.Inc.f(cb, cc, g),
-      C.EditStructure.apply(cb)(C.Inc.df(ca, cb, f)(a, d), C.Inc.f(ca, cb, f)(a)),
-      C.Inc.f(ca, cb, f)(C.EditStructure.apply(ca)(d, a)),
-      f_ok(a, d)))
+  %f_ok(a, d) : {C.Kept.after(~cc, C.Both<C.Cached.Cache(ca, cb, f), C.Cached.Cache(cb, cc, g)>, C.compose.df(~ca, ~cb, ~cc, ~f, ~g, C.Kept.cache(C.Value(cc), C.Both<C.Cached.Cache(ca, cb, f), C.Cached.Cache(cb, cc, g)>, C.compose.f(~ca, ~cb, ~cc, ~f, ~g, a)), d), C.Kept.result(C.Value(cc), C.Both<C.Cached.Cache(ca, cb, f), C.Cached.Cache(cb, cc, g)>, C.compose.f(~ca, ~cb, ~cc, ~f, ~g, a))) == C.Kept{C.Kept.result(C.Value(cc), C.Cached.Cache(cb, cc, g), C.Cached.f(cb, cc, g)(C.Kept.result(C.Value(cb), C.Cached.Cache(ca, cb, f), _))), C.Both{C.Kept.cache(C.Value(cb), C.Cached.Cache(ca, cb, f), _), C.Kept.cache(C.Value(cc), C.Cached.Cache(cb, cc, g), C.Cached.f(cb, cc, g)(C.Kept.result(C.Value(cb), C.Cached.Cache(ca, cb, f), _)))}} : C.Kept<C.Value(cc), C.Both<C.Cached.Cache(ca, cb, f), C.Cached.Cache(cb, cc, g)>>}
+  %g_ok(C.Kept.result(C.Value(cb), C.Cached.Cache(ca, cb, f), C.Cached.f(ca, cb, f)(a)), C.Kept.result(C.Edit(cb), C.Cached.Cache(ca, cb, f), C.Cached.df(ca, cb, f)(C.Kept.cache(C.Value(cb), C.Cached.Cache(ca, cb, f), C.Cached.f(ca, cb, f)(a)), d))) : {C.Kept.after(~cc, C.Both<C.Cached.Cache(ca, cb, f), C.Cached.Cache(cb, cc, g)>, C.compose.df(~ca, ~cb, ~cc, ~f, ~g, C.Kept.cache(C.Value(cc), C.Both<C.Cached.Cache(ca, cb, f), C.Cached.Cache(cb, cc, g)>, C.compose.f(~ca, ~cb, ~cc, ~f, ~g, a)), d), C.Kept.result(C.Value(cc), C.Both<C.Cached.Cache(ca, cb, f), C.Cached.Cache(cb, cc, g)>, C.compose.f(~ca, ~cb, ~cc, ~f, ~g, a))) == C.Kept{C.Kept.result(C.Value(cc), C.Cached.Cache(cb, cc, g), _), C.Both{C.Kept.cache(C.Edit(cb), C.Cached.Cache(ca, cb, f), C.Cached.df(ca, cb, f)(C.Kept.cache(C.Value(cb), C.Cached.Cache(ca, cb, f), C.Cached.f(ca, cb, f)(a)), d)), C.Kept.cache(C.Value(cc), C.Cached.Cache(cb, cc, g), _)}} : C.Kept<C.Value(cc), C.Both<C.Cached.Cache(ca, cb, f), C.Cached.Cache(cb, cc, g)>>}
+  {==}
 
 def Laws.compose_ok(ca, cb, cc, f, g, f_ok, g_ok):
   a => d => compose_at(~ca, ~cb, ~cc, ~f, ~g, ~f_ok, ~g_ok, a, d)
+

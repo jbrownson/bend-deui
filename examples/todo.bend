@@ -60,18 +60,22 @@ def row.plain() -> C.Inc<C.none(~Item), C.none(~K.Row)>:
 def row() -> C.Inc<item_edits(), K.row_edits()>:
   C.whole.lift(~C.none(~Item), ~C.none(~K.Row), ~row.plain())
 
-# The items' rows, then the column of them.
-def view() -> C.Inc<C.runs(~items_edits()), C.runs(~S.edit_structure())>:
+# The items' rows, then the column of them, each keeping its input for
+# its derivative, so the rows aren't made again for the column's.
+def view() -> C.Cached<C.runs(~items_edits()), C.runs(~S.edit_structure())>:
   C.compose(~C.runs(~items_edits()), ~C.runs(~K.rows_edits()), ~C.runs(~S.edit_structure()),
-    ~L.map.inc(~item_edits(), ~K.row_edits(), ~row()), ~K.inc())
+    ~C.cached(~C.runs(~items_edits()), ~C.runs(~K.rows_edits()), ~L.map.inc(~item_edits(), ~K.row_edits(), ~row())),
+    ~C.cached(~C.runs(~K.rows_edits()), ~C.runs(~S.edit_structure()), ~K.inc()))
 
 # The view's derivative is correct: each part's is, by its law.
-def view_ok() -> C.Inc.ok(C.runs(~items_edits()), C.runs(~S.edit_structure()), view()):
+def view_ok() -> C.Cached.ok(C.runs(~items_edits()), C.runs(~S.edit_structure()), view()):
   CL.compose_ok(~C.runs(~items_edits()), ~C.runs(~K.rows_edits()), ~C.runs(~S.edit_structure()),
-    ~L.map.inc(~item_edits(), ~K.row_edits(), ~row()), ~K.inc(),
-    ~LL.map_inc_ok(~item_edits(), ~K.row_edits(), ~row(),
-      ~CL.whole_lift_ok(~C.none(~Item), ~C.none(~K.Row), ~row.plain(), ~(item => e => Empty.absurd({C.EditStructure.apply(C.none(~K.Row))(Empty.absurd(Empty, e), row_of(item)) == row_of(C.EditStructure.apply(C.none(~Item))(e, item)) : K.Row}, e)))),
-    ~KL.inc_ok())
+    ~C.cached(~C.runs(~items_edits()), ~C.runs(~K.rows_edits()), ~L.map.inc(~item_edits(), ~K.row_edits(), ~row())),
+    ~C.cached(~C.runs(~K.rows_edits()), ~C.runs(~S.edit_structure()), ~K.inc()),
+    ~CL.cached_ok(~C.runs(~items_edits()), ~C.runs(~K.rows_edits()), ~L.map.inc(~item_edits(), ~K.row_edits(), ~row()),
+      ~LL.map_inc_ok(~item_edits(), ~K.row_edits(), ~row(),
+        ~CL.whole_lift_ok(~C.none(~Item), ~C.none(~K.Row), ~row.plain(), ~(item => e => Empty.absurd({C.EditStructure.apply(C.none(~K.Row))(Empty.absurd(Empty, e), row_of(item)) == row_of(C.EditStructure.apply(C.none(~Item))(e, item)) : K.Row}, e))))),
+    ~CL.cached_ok(~C.runs(~K.rows_edits()), ~C.runs(~S.edit_structure()), ~K.inc(), ~KL.inc_ok()))
 
 # Handlers
 # --------
@@ -176,7 +180,7 @@ def handlers.key(items: List<&2, Item>, code: U32) -> List<&2, L.Edit.of(item_ed
 def handlers.text(items: List<&2, Item>, t: String) -> List<&2, L.Edit.of(item_edits())>:
   text(items, t)
 
-def model() -> A.Model<items_edits()>:
+def model() -> A.Model<items_edits(), view()>:
   A.play(~items_edits(), ~view(), ~handlers.press, ~handlers.key, ~handlers.text, events(), A.start(~items_edits(), ~view(), items()))
 
 def shown(items: List<&2, Item>) -> String:
@@ -186,10 +190,10 @@ def shown(items: List<&2, Item>) -> String:
     case Con{Item{t, d}, rest}:
       String.concat([R.yes(d), " ", t, "\n", shown(rest)])
 
-def report(m: A.Model<items_edits()>) -> String:
+def report(+m: A.Model<items_edits(), view()>) -> String:
   match m:
-    case A.Model{+state, scene}:
-      String.concat(["done? item:\n", shown(state), "the scene on screen is the view of the items: ", R.yes(R.same(scene, C.Inc.f(C.runs(~items_edits()), C.runs(~S.edit_structure()), view())(state))), "\n"])
+    case A.Model{+state, kept}:
+      String.concat(["done? item:\n", shown(state), "the scene on screen is the view of the items: ", R.yes(R.same(A.scene(items_edits(), view(), m), C.Kept.result(S.Scene, A.Cache(items_edits(), view()), C.Cached.f(C.runs(~items_edits()), C.runs(~S.edit_structure()), view())(state)))), "\n"])
 
 def main() -> IO(Unit):
   IO.print(report(model()))

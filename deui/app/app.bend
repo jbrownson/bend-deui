@@ -4,16 +4,22 @@ import ../change/change.bend as C
 import ../scene/scene.bend as S
 
 # An app: a state, edited as cs says, its view, an incremental function
-# from runs of the state's edits to runs of the scene's, and three
+# from runs of the state's edits to runs of the scene's that keeps what its
+# derivative needs, and three
 # handlers, fixed code passed as templates. An event becomes a run of edits
 # to the state, from what a press hit, which key went down or what was
 # typed, and the view's
 # derivative turns that run into edits to the scene kept on screen. The
 # view itself runs once, at launch.
 
-# What an app holds between events: its state, and the scene on screen.
-type Model<-cs: C.EditStructure> is Data:
-  Model{state: C.Value(cs), scene: S.Scene}
+# What the view keeps for its derivative.
+def Cache(-cs: C.EditStructure, view: C.Cached<C.runs(~cs), C.runs(~S.edit_structure())>) -> Data:
+  C.Cached.Cache(C.runs(~cs), C.runs(~S.edit_structure()), view)
+
+# What an app holds between events: its state, and what's shown: the scene
+# on screen, with what the view keeps.
+type Model<-cs: C.EditStructure, -view: C.Cached<C.runs(~cs), C.runs(~S.edit_structure())>> is Data:
+  Model{state: C.Value(cs), shown: C.Kept<S.Scene, Cache(cs, view)>}
 
 # A pointer's coordinate, in pixels from the window's left or top.
 def coordinate(v: F32) -> I.I32:
@@ -45,30 +51,36 @@ def respond(~cs: C.EditStructure, ~press: C.Value(cs) -> S.Hit -> List<&2, C.Edi
       Nil{}
 
 # The model after a run of edits: the state edited, and the scene edited by
-# the view's derivative of them.
-def edit(~cs: C.EditStructure, ~view: C.Inc<C.runs(~cs), C.runs(~S.edit_structure())>,
-  +state: C.Value(cs), scene: S.Scene, +es: List<&2, C.Edit(cs)>) -> Model<cs>:
-  Model{C.run(~cs, es, state), C.run(~S.edit_structure(), C.Inc.df(C.runs(~cs), C.runs(~S.edit_structure()), view)(state, es), scene)}
+# the view's derivative of them, from what the view kept, which it renews.
+def edit(~cs: C.EditStructure, ~view: C.Cached<C.runs(~cs), C.runs(~S.edit_structure())>,
+  +state: C.Value(cs), +shown: C.Kept<S.Scene, Cache(cs, view)>, +es: List<&2, C.Edit(cs)>) -> Model<cs, view>:
+  Model{C.run(~cs, es, state), C.Kept.after(~C.runs(~S.edit_structure()), Cache(cs, view), C.Cached.df(C.runs(~cs), C.runs(~S.edit_structure()), view)(C.Kept.cache(S.Scene, Cache(cs, view), shown), es), C.Kept.result(S.Scene, Cache(cs, view), shown))}
 
 # The model after an event.
-def step(~cs: C.EditStructure, ~view: C.Inc<C.runs(~cs), C.runs(~S.edit_structure())>,
+def step(~cs: C.EditStructure, ~view: C.Cached<C.runs(~cs), C.runs(~S.edit_structure())>,
   ~press: C.Value(cs) -> S.Hit -> List<&2, C.Edit(cs)>, ~key: C.Value(cs) -> U32 -> List<&2, C.Edit(cs)>, ~text: C.Value(cs) -> String -> List<&2, C.Edit(cs)>,
-  m: Model<cs>, event: Event) -> Model<cs>:
+  m: Model<cs, view>, event: Event) -> Model<cs, view>:
   match m:
-    case Model{+state, +scene}:
-      edit(~cs, ~view, state, scene, respond(~cs, ~press, ~key, ~text, state, scene, event))
+    case Model{+state, +shown}:
+      edit(~cs, ~view, state, shown, respond(~cs, ~press, ~key, ~text, state, C.Kept.result(S.Scene, Cache(cs, view), shown), event))
 
 # The model at launch: the state, and its view.
-def start(~cs: C.EditStructure, ~view: C.Inc<C.runs(~cs), C.runs(~S.edit_structure())>,
-  +state: C.Value(cs)) -> Model<cs>:
-  Model{state, C.Inc.f(C.runs(~cs), C.runs(~S.edit_structure()), view)(state)}
+def start(~cs: C.EditStructure, ~view: C.Cached<C.runs(~cs), C.runs(~S.edit_structure())>,
+  +state: C.Value(cs)) -> Model<cs, view>:
+  Model{state, C.Cached.f(C.runs(~cs), C.runs(~S.edit_structure()), view)(state)}
 
 # The model after events, in order.
-def play(~cs: C.EditStructure, ~view: C.Inc<C.runs(~cs), C.runs(~S.edit_structure())>,
+def play(~cs: C.EditStructure, ~view: C.Cached<C.runs(~cs), C.runs(~S.edit_structure())>,
   ~press: C.Value(cs) -> S.Hit -> List<&2, C.Edit(cs)>, ~key: C.Value(cs) -> U32 -> List<&2, C.Edit(cs)>, ~text: C.Value(cs) -> String -> List<&2, C.Edit(cs)>,
-  events: List<&2, Event>, m: Model<cs>) -> Model<cs>:
+  events: List<&2, Event>, m: Model<cs, view>) -> Model<cs, view>:
   match events:
     case Nil{}:
       m
     case Con{e, rest}:
       play(~cs, ~view, ~press, ~key, ~text, rest, step(~cs, ~view, ~press, ~key, ~text, m, e))
+
+# The scene on screen.
+def scene(-cs: C.EditStructure, -view: C.Cached<C.runs(~cs), C.runs(~S.edit_structure())>, m: Model<cs, view>) -> S.Scene:
+  match m:
+    case Model{state, shown}:
+      C.Kept.result(S.Scene, Cache(cs, view), shown)

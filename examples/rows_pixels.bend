@@ -35,10 +35,10 @@ def both(ra: Result<&1, &1, U32 & String, Array<U32>>, rb: Result<&1, &1, U32 & 
     case ra rb:
       "a frame failed to draw\n"
 
-def report(m: A.Model<K.rows_edits()>) -> String:
+def report(+m: A.Model<K.rows_edits(), R.view()>) -> String:
   match m:
-    case A.Model{+state, scene}:
-      both(Rp.pixels(P.frame(scene, None{}, width(), 60, 2106408)), Rp.pixels(P.frame(K.view(state), None{}, width(), 60, 2106408)))
+    case A.Model{+state, shown}:
+      both(Rp.pixels(P.frame(A.scene(K.rows_edits(), R.view(), m), None{}, width(), 60, 2106408)), Rp.pixels(P.frame(K.view(state), None{}, width(), 60, 2106408)))
 
 def main() -> IO(Unit):
   IO.print(report(R.model()))

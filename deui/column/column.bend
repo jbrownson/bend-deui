@@ -3,6 +3,7 @@ import 0x4eed9d7ac6ece61523d747a9d804e4f0/int.bend as I
 import ../change/change.bend as C
 import ../list/list.bend as L
 import ../scene/scene.bend as S
+import ../i32/i32.bend as N
 
 # A column: rows stacked from the top, each as tall as it says. Its
 # derivative turns an edit to the rows into the edits to the column's scene,
@@ -82,14 +83,33 @@ def holds(rows: List<&2, Row>, i: Nat) -> Bool:
     case Con{r, t} 1n+p:
       holds(t, p)
 
-# Replacing the row at i: deleting it, then inserting the new one, if there
-# is a row there; past the end, nothing.
+# The edits replacing the row at i with one as tall makes: the row goes,
+# and the new one goes where it was. The rows after it stay where they are.
+def swap.edits(+rows: List<&2, Row>, +i: Nat, s: S.Scene) -> List<&2, S.Edit>:
+  [S.Delete{i}, S.Insert{i, placed(top(rows, i, zero()), s)}]
+
+# Replacing the row at i, when whether the new one is as tall is known:
+# swapping it if it is, else deleting it and inserting the new one.
+def resize.edits(same: Bool, +rows: List<&2, Row>, +i: Nat, r: Row) -> List<&2, S.Edit>:
+  match same:
+    case True{}:
+      match r:
+        case Row{h, s}:
+          swap.edits(rows, i, s)
+    case False{}:
+      List.append(&2, S.Edit, delete.edits(rows, i), insert.edits(L.remove(Row, rows, i), i, r))
+
+# Replacing the row at i, if there is a row there: swapping it for one as
+# tall, deleting it and inserting one of another height; past the end,
+# nothing.
 def replace.edits(held: Bool, +rows: List<&2, Row>, +i: Nat, r: Row) -> List<&2, S.Edit>:
   match held:
     case False{}:
       Nil{}
     case True{}:
-      List.append(&2, S.Edit, delete.edits(rows, i), insert.edits(L.remove(Row, rows, i), i, r))
+      match r:
+        case Row{+h, s}:
+          resize.edits(N.same(height(rows, i), h), rows, i, Row{h, s})
 
 # The edits one edit to the rows makes to the column's scene.
 def edit(+rows: List<&2, Row>, e: L.Edit.of(row_edits())) -> List<&2, S.Edit>:

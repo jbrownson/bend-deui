@@ -9,9 +9,9 @@ def Laws.start_shows(cs, view, state):
 
 def Laws.step_shows(cs, view, press, key, text, view_ok, m, e, h):
   match m:
-    case A.Model{+state, +scene}:
-      %Equal.sym(S.Scene, scene, C.Inc.f(C.runs(~cs), C.runs(~S.edit_structure()), view)(state), h) : {C.run(~S.edit_structure(), C.Inc.df(C.runs(~cs), C.runs(~S.edit_structure()), view)(state, A.respond(~cs, ~press, ~key, ~text, state, scene, e)), _) == C.Inc.f(C.runs(~cs), C.runs(~S.edit_structure()), view)(C.run(~cs, A.respond(~cs, ~press, ~key, ~text, state, scene, e), state)) : S.Scene}
-      view_ok(state, A.respond(~cs, ~press, ~key, ~text, state, scene, e))
+    case A.Model{+state, +shown}:
+      %Equal.sym(C.Kept<S.Scene, A.Cache(cs, view)>, shown, C.Cached.f(C.runs(~cs), C.runs(~S.edit_structure()), view)(state), h) : {C.Kept.after(~C.runs(~S.edit_structure()), A.Cache(cs, view), C.Cached.df(C.runs(~cs), C.runs(~S.edit_structure()), view)(C.Kept.cache(S.Scene, A.Cache(cs, view), _), A.respond(~cs, ~press, ~key, ~text, state, C.Kept.result(S.Scene, A.Cache(cs, view), shown), e)), C.Kept.result(S.Scene, A.Cache(cs, view), _)) == C.Cached.f(C.runs(~cs), C.runs(~S.edit_structure()), view)(C.run(~cs, A.respond(~cs, ~press, ~key, ~text, state, C.Kept.result(S.Scene, A.Cache(cs, view), shown), e), state)) : C.Kept<S.Scene, A.Cache(cs, view)>}
+      view_ok(state, A.respond(~cs, ~press, ~key, ~text, state, C.Kept.result(S.Scene, A.Cache(cs, view), shown), e))
 
 def Laws.play_shows(cs, view, press, key, text, view_ok, events, m, h):
   match events:

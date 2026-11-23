@@ -176,14 +176,12 @@ their libraries to run:
 - [SDL3](https://libsdl.org) (`libSDL3.so.0`; `pacman -S sdl3` on Arch),
   and a Vulkan driver.
 - [wgpu-native](https://github.com/gfx-rs/wgpu-native) v29.0.1.1
-  (`libwgpu_native.so`), the version ThorVG is built against: its C API
-  still changes between releases.
-- [ThorVG](https://github.com/thorvg/thorvg) 1.1.4, with its WebGPU
-  engine, its TrueType loader and its C API (`libthorvg-1.so.1`).
-
-`tools/setup-native.sh` installs the last two under `/usr/local`: it
-fetches wgpu-native's release build and builds ThorVG against it. Its
-comment lists what it needs.
+  (`libwgpu_native.so`, and `webgpu/webgpu.h`), the version ThorVG is
+  built against: its C API still changes between releases.
+- [ThorVG](https://github.com/thorvg/thorvg) 1.1.4, built against that
+  wgpu-native with its WebGPU engine, its TrueType loader and its C API
+  (`libthorvg-1.so.1`, and `thorvg-1/thorvg_capi.h`): meson's
+  `-Dengines=wg -Dloaders=ttf -Dbindings=capi`.
 
 ## Running
 

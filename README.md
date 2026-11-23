@@ -19,6 +19,9 @@ every module's proofs.
 
 `deui/`, the library:
 
+- `i32/`: what coordinates' addition promises: in either order, and in
+  either grouping, it gives the same. Proved through Nat with
+  bend-mathlib's lemmas about U32.
 - `change/`: edits to any value. An edit structure (`EditStructure`) says
   how a type's values are edited: the type of the values (`Value`), the type
   of their edits (`Edit`), and how to apply one. A change structure
@@ -73,9 +76,11 @@ Changes for Higher-Order Languages"](https://arxiv.org/abs/1312.0658).
 
 ## Dependencies
 
-`bend-kit-int` (`0x4eed9d7a…`), the `I32` used for coordinates, from
-[BendHub](https://hub.bend-lang.com/packages). It's imported by content
-hash, so `bend` fetches exactly that code on first use and checks it.
+From [BendHub](https://hub.bend-lang.com/packages), imported by content
+hash, so `bend` fetches exactly that code on first use and checks it:
+
+- `bend-kit-int` (`0x4eed9d7a…`), the `I32` used for coordinates.
+- `bend-mathlib` 0.8.1.1 (`0x15432fae…`), lemmas about Nat and U32.
 
 ## Running
 

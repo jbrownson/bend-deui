@@ -98,10 +98,11 @@ native code:
   fill and label at its offset plus its groups', later ones on top. The
   scene itself is kept, and changes only by its edits; `frame` runs on
   every frame.
-- `screen.c`: those effects, natively, with
-  [SDL3](https://libsdl.org) and SDL3_ttf, which lays out and draws text
-  with FreeType and HarfBuzz. They're opened with `dlopen`, as Bend links
-  no library of its own choosing.
+- `screen.c`: those effects, natively. [SDL3](https://libsdl.org) gives
+  the window, its events and an OpenGL context, and
+  [ThorVG](https://www.thorvg.org)'s OpenGL engine draws each frame on the
+  GPU, its labels included. Both are opened with `dlopen`, as Bend links no
+  library of its own choosing.
 - `window.bend`: runs an app in a window: draws the scene on screen, waits
   for events, and plays them through the app, until the window closes.
   The view runs once, at launch.
@@ -168,10 +169,18 @@ hash, so `bend` fetches exactly that code on first use and checks it:
 - `bend-kit-int` (`0x4eed9d7a…`), the `I32` used for coordinates.
 - `bend-mathlib` 0.8.1.1 (`0x15432fae…`), lemmas about Nat and U32.
 
-For the windows, [SDL3](https://libsdl.org) and
-[SDL3_ttf](https://github.com/libsdl-org/SDL_ttf), installed on the system
-(`pacman -S sdl3 sdl3_ttf` on Arch): their headers to build, and
-`libSDL3.so.0` and `libSDL3_ttf.so.0` to run.
+For the windows, installed on the system, their headers to build and
+their libraries to run:
+
+- [SDL3](https://libsdl.org) (`libSDL3.so.0`; `pacman -S sdl3` on Arch).
+- [ThorVG](https://github.com/thorvg/thorvg) 1.x, with its OpenGL engine,
+  its TrueType loader and its C API (`libthorvg-1.so.1`, and
+  `thorvg-1/thorvg_capi.h`). From a checkout of its source:
+
+  ```sh
+  meson setup build --buildtype=release -Dengines=cpu,gl -Dloaders=ttf -Dbindings=capi
+  ninja -C build && sudo ninja -C build install
+  ```
 
 ## Running
 
@@ -198,7 +207,7 @@ Wayland or X11. Sizes and positions are in the window's coordinates; on a
 high-density display the window has its full resolution, and the frame,
 its text included, is drawn at it.
 
-Tested with Bend 2.0.40, SDL 3.4.20 and SDL3_ttf 3.2.2. The windows have
+Tested with Bend 2.0.40, SDL 3.4.20 and ThorVG 1.1.4. The windows have
 been run under Xvfb (X11), driven by xdotool: clicks, Return, typing and
 Backspace; and drawn under headless Weston (Wayland) at scale 2. The window examples look for Liberation Sans at
 `/usr/share/fonts/liberation/LiberationSans-Regular.ttf` (`ttf-liberation`

@@ -75,6 +75,16 @@ every module's proofs.
   if the derivative is correct, the scene on screen is the view of the
   state after every event, as if it had run again.
 
+`deui/window/`, the native window, outside the proofs since it calls
+native code:
+
+- `paint.bend`: a scene as a Chromi draw list, each fill at its offset
+  plus its groups', later ones on top. It runs on every frame; the scene
+  itself is kept, and changes only by its edits.
+- `window.bend`: runs an app in Ankra's window, drawn on the GPU by Chromi
+  through Voltra. Ankra's input becomes Base's events, which go through
+  the app; the view runs once, at launch.
+
 `examples/`:
 
 - `lists.bend`: `dmap` on concrete lists of numbers: the edits that mapping
@@ -88,6 +98,10 @@ every module's proofs.
   "a" adds one at the top. It plays clicks and a key, then prints the
   heights left and whether the scene on screen is the view of the rows.
   It reads its events' float coordinates, so it runs natively.
+- `rows_pixels.bend`: the rows app's scene after its events, drawn on the
+  CPU as the window draws it on the GPU, checked against drawing the rows
+  again.
+- `rows_window.bend`: the rows app in a window.
 
 `change/` and `list/` began in bend-puri, as its `ilc/`, at `7b711ea`; their
 history is there.
@@ -107,6 +121,12 @@ hash, so `bend` fetches exactly that code on first use and checks it:
 - `bend-kit-int` (`0x4eed9d7a…`), the `I32` used for coordinates.
 - `bend-mathlib` 0.8.1.1 (`0x15432fae…`), lemmas about Nat and U32.
 
+The [AMAGE](https://github.com/amage-si) libraries, copied into
+`vendor/amage/` at the commits its README lists, with one patch it
+describes: Ankra (the window and its events), Voltra (Vulkan), Chromi
+(draw lists), and Runika, Syllo, Dithra and Splina (text, which nothing
+here uses yet). Ankra and Voltra each include a native bridge in C.
+
 ## Running
 
 ```sh
@@ -116,6 +136,8 @@ bend examples/lists.bend      # computes a mapped list's edits
 bend examples/scene.bend      # edits a column of rows
 bend examples/column.bend     # patches a column, and draws it again
 bend examples/rows.bend -o rows && ./rows   # plays events through an app
+bend examples/rows_pixels.bend -o px && ./px # draws the app on the CPU
+bend examples/rows_window.bend -o win && ./win  # the app in a window
 ```
 
 `bend <file> --verdict` checks a proof a second time with Bend's BendTT
@@ -123,4 +145,11 @@ kernel, which has its own proof in Lean, and confirms nothing relies on
 `@unsafe` or foreign code. It needs Lean 4.34.0 (the elan toolchain
 `leanprover/lean4:v4.34.0`) to build the kernel on first use.
 
-Tested with Bend 2.0.40.
+Windows only open from a native build. They open an X11 window, directly
+or through XWayland, and draw with Vulkan. That needs Linux, clang, the
+X11 and XRandR headers (`clang libx11-dev libxrandr-dev` on
+Debian/Ubuntu), a Vulkan 1.3 driver, and a desktop session so `$DISPLAY`
+is set. Sizes and positions are physical pixels.
+
+Tested with Bend 2.0.40. The window example checks, but hasn't been run:
+it was written where there's no display.
